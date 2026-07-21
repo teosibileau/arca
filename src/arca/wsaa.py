@@ -3,10 +3,13 @@
 import base64
 import json
 import secrets
-import xml.etree.ElementTree as ET
-from datetime import datetime, timedelta, timezone
+
+# ET se usa solo para CONSTRUIR el TRA; el parseo de respuestas usa defusedxml.
+import xml.etree.ElementTree as ET  # nosec B405
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import defusedxml.ElementTree as SafeET
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.serialization import pkcs7
@@ -16,11 +19,13 @@ TA_TTL = timedelta(hours=12)
 
 def build_tra(service: str, now: datetime | None = None) -> bytes:
     """Arma el loginTicketRequest XML para un servicio dado."""
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     root = ET.Element("loginTicketRequest", version="1.0")
     header = ET.SubElement(root, "header")
     ET.SubElement(header, "uniqueId").text = str(secrets.randbelow(2**31))
-    ET.SubElement(header, "generationTime").text = (now - timedelta(minutes=5)).isoformat(timespec="seconds")
+    ET.SubElement(header, "generationTime").text = (now - timedelta(minutes=5)).isoformat(
+        timespec="seconds"
+    )
     ET.SubElement(header, "expirationTime").text = (now + TA_TTL).isoformat(timespec="seconds")
     ET.SubElement(root, "service").text = service
     return ET.tostring(root, xml_declaration=True, encoding="UTF-8")
@@ -41,7 +46,7 @@ def sign_tra(tra: bytes, cert_path: Path, key_path: Path) -> str:
 
 def parse_login_response(xml_response: str) -> dict:
     """Extrae token, sign y expiración del loginTicketResponse."""
-    root = ET.fromstring(xml_response)
+    root = SafeET.fromstring(xml_response)
     return {
         "token": root.findtext("./credentials/token"),
         "sign": root.findtext("./credentials/sign"),
@@ -62,7 +67,7 @@ class Wsaa:
         cache = self._cache_path(service)
         if cache.exists():
             ta = json.loads(cache.read_text())
-            if datetime.fromisoformat(ta["expiration"]) > datetime.now(timezone.utc) + timedelta(minutes=5):
+            if datetime.fromisoformat(ta["expiration"]) > datetime.now(UTC) + timedelta(minutes=5):
                 return ta
         ta = self._login(service)
         cache.parent.mkdir(parents=True, exist_ok=True)

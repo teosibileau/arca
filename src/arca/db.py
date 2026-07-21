@@ -1,7 +1,7 @@
 """Estado local en SQLite: clientes (situación tributaria cacheada) y facturas emitidas."""
 
 import sqlite3
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 SCHEMA = """
@@ -47,9 +47,10 @@ def upsert_cliente(
     condicion_desc: str,
     consultado_en: datetime | None = None,
 ) -> None:
-    consultado_en = consultado_en or datetime.now(timezone.utc)
+    consultado_en = consultado_en or datetime.now(UTC)
     conn.execute(
-        """INSERT INTO clientes (cuit, denominacion, condicion_iva_id, condicion_desc, consultado_en)
+        """INSERT INTO clientes
+           (cuit, denominacion, condicion_iva_id, condicion_desc, consultado_en)
            VALUES (?, ?, ?, ?, ?)
            ON CONFLICT(cuit) DO UPDATE SET
              denominacion = excluded.denominacion,
@@ -79,7 +80,8 @@ def insert_factura(
 ) -> None:
     conn.execute(
         """INSERT INTO facturas
-           (punto_venta, cbte_tipo, cbte_nro, cuit_receptor, importe, concepto, cae, cae_vto, emitida_en)
+           (punto_venta, cbte_tipo, cbte_nro, cuit_receptor,
+            importe, concepto, cae, cae_vto, emitida_en)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             punto_venta,
@@ -90,7 +92,7 @@ def insert_factura(
             concepto,
             cae,
             cae_vto,
-            datetime.now(timezone.utc).isoformat(),
+            datetime.now(UTC).isoformat(),
         ),
     )
     conn.commit()

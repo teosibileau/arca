@@ -1,7 +1,5 @@
 from datetime import date
 
-import pytest
-
 from arca.wsfe import (
     CONCEPTO_PRODUCTOS,
     CONCEPTO_SERVICIOS,
@@ -39,5 +37,7 @@ def test_servicios_incluye_fechas_de_servicio():
 
 
 def test_productos_omite_fechas_de_servicio():
-    det = build_fecae_request(_factura(concepto=CONCEPTO_PRODUCTOS))["FeDetReq"]["FECAEDetRequest"][0]
+    det = build_fecae_request(_factura(concepto=CONCEPTO_PRODUCTOS))["FeDetReq"]["FECAEDetRequest"][
+        0
+    ]
     assert "FchServDesde" not in det

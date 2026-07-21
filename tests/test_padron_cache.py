@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import Mock
 
 from arca import padron
@@ -17,7 +17,7 @@ def _padron_mock():
 
 def test_cache_fresco_no_consulta(conn):
     p = _padron_mock()
-    now = datetime(2026, 7, 21, tzinfo=timezone.utc)
+    now = datetime(2026, 7, 21, tzinfo=UTC)
     padron.get_cliente(conn, 30111222333, p, now=now)
     assert p.consultar.call_count == 1
 
@@ -27,7 +27,7 @@ def test_cache_fresco_no_consulta(conn):
 
 def test_cache_vencido_reconsulta(conn):
     p = _padron_mock()
-    now = datetime(2026, 7, 21, tzinfo=timezone.utc)
+    now = datetime(2026, 7, 21, tzinfo=UTC)
     padron.get_cliente(conn, 30111222333, p, now=now)
     padron.get_cliente(conn, 30111222333, p, now=now + timedelta(days=31))
     assert p.consultar.call_count == 2
@@ -35,7 +35,7 @@ def test_cache_vencido_reconsulta(conn):
 
 def test_refresh_fuerza_reconsulta(conn):
     p = _padron_mock()
-    now = datetime(2026, 7, 21, tzinfo=timezone.utc)
+    now = datetime(2026, 7, 21, tzinfo=UTC)
     padron.get_cliente(conn, 30111222333, p, now=now)
     padron.get_cliente(conn, 30111222333, p, refresh=True, now=now)
     assert p.consultar.call_count == 2

@@ -1,6 +1,6 @@
 """Situación tributaria del receptor via ws_sr_constancia_inscripcion, con cache en SQLite."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from arca import db
 
@@ -63,9 +63,11 @@ class Padron:
         }
 
 
-def get_cliente(conn, cuit: int, padron: Padron, refresh: bool = False, now: datetime | None = None) -> dict:
+def get_cliente(
+    conn, cuit: int, padron: Padron, refresh: bool = False, now: datetime | None = None
+) -> dict:
     """Devuelve el cliente desde cache si es fresco; si no, consulta el padrón y actualiza."""
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     if not refresh:
         row = db.get_cliente(conn, cuit)
         if row and now - datetime.fromisoformat(row["consultado_en"]) < CACHE_TTL:

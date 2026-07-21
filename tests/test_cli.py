@@ -17,11 +17,23 @@ def _context(tmp_path, wsfe=None, padron=None):
 def test_facturar_emite_y_guarda(tmp_path):
     wsfe = Mock()
     wsfe.ultimo_autorizado.return_value = 7
-    wsfe.autorizar.return_value = {"resultado": "A", "cae": "999", "cae_vto": "20260731", "observaciones": []}
+    wsfe.autorizar.return_value = {
+        "resultado": "A",
+        "cae": "999",
+        "cae_vto": "20260731",
+        "observaciones": [],
+    }
     ctx = _context(tmp_path, wsfe=wsfe)
-    cliente = {"denominacion": "ACME SA", "condicion_desc": "IVA Responsable Inscripto", "condicion_iva_id": 1}
+    cliente = {
+        "denominacion": "ACME SA",
+        "condicion_desc": "IVA Responsable Inscripto",
+        "condicion_iva_id": 1,
+    }
 
-    with patch("arca.cli._context", return_value=ctx), patch("arca.padron.get_cliente", return_value=cliente):
+    with (
+        patch("arca.cli._context", return_value=ctx),
+        patch("arca.padron.get_cliente", return_value=cliente),
+    ):
         result = runner.invoke(app, ["facturar", "--cuit", "30111222333", "--importe", "1000"])
 
     assert result.exit_code == 0, result.output

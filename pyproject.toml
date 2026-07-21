@@ -13,6 +13,7 @@ dependencies = [
     "zeep>=4.2",
     "cryptography>=43.0",
     "pydantic-settings>=2.5",
+    "defusedxml>=0.7",
 ]
 
 [project.scripts]
@@ -22,6 +23,19 @@ arca = "arca.cli:app"
 dev = [
     "pytest>=8.0",
 ]
+
+[tool.ruff]
+# Ruff es dueño del lint, orden de imports (regla `I`) y formato. Sin isort
+# aparte: ruff-I e isort se pelean y nunca convergen (astral-sh/ruff#12733).
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.bandit]
+# Los tests usan secretos descartables y asserts a propósito; solo la app.
+exclude_dirs = ["tests", ".venv"]
 
 [build-system]
 requires = ["uv_build>=0.9.21,<0.10.0"]
