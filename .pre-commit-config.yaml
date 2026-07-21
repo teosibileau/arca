@@ -1,0 +1,41 @@
+# pre-commit para el lado Python, calcado de throwline/mist. A diferencia de
+# mist (donde husky es dueño del hook y esto no se instala), acá el repo es
+# Python puro: instalar con `pre-commit install` (pre-commit es una tool
+# global, p.ej. `brew install pre-commit` o `uv tool install pre-commit`;
+# no es dependencia del proyecto).
+---
+minimum_pre_commit_version: "4.0.0"
+default_stages: [pre-commit]
+
+repos:
+  # Ruff para lint, orden de imports (regla `I`) y formato. La config vive en
+  # pyproject.toml ([tool.ruff]). No se agrega isort aparte: ruff-I e isort
+  # se pelean y nunca convergen (astral-sh/ruff#12733).
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.18
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  # Higiene genérica de archivos (barata, agnóstica del lenguaje).
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-added-large-files
+      - id: check-case-conflict
+
+  # Scan de seguridad del código de la app (tests excluidos via pyproject).
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.8.0
+    hooks:
+      - id: bandit
+        args: [-c, pyproject.toml]
+        additional_dependencies: ["bandit[toml]"]
+        files: ^src/arca/.*\.py$

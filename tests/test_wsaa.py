@@ -1,12 +1,12 @@
 import base64
 import xml.etree.ElementTree as ET
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from arca.wsaa import build_tra, parse_login_response, sign_tra
 
 
 def test_build_tra_structure():
-    now = datetime(2026, 7, 21, 12, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 7, 21, 12, 0, tzinfo=UTC)
     root = ET.fromstring(build_tra("wsfe", now=now))
     assert root.tag == "loginTicketRequest"
     assert root.findtext("service") == "wsfe"

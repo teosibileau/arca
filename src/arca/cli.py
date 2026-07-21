@@ -5,10 +5,11 @@ from datetime import date
 import questionary
 import typer
 
-from arca import db, padron as padron_mod
+from arca import db
+from arca import padron as padron_mod
 from arca.config import Settings
 from arca.wsaa import Wsaa
-from arca.wsfe import CONCEPTO_SERVICIOS, FACTURA_C, DOC_TIPO_CUIT, FacturaC, Wsfe
+from arca.wsfe import CONCEPTO_SERVICIOS, DOC_TIPO_CUIT, FACTURA_C, FacturaC, Wsfe
 
 app = typer.Typer(help="Factura C contra los web services de ARCA.")
 
@@ -16,13 +17,20 @@ app = typer.Typer(help="Factura C contra los web services de ARCA.")
 def _context():
     settings = Settings()
     wsaa = Wsaa(settings)
-    return settings, db.connect(settings.db_path), Wsfe(settings, wsaa), padron_mod.Padron(settings, wsaa)
+    return (
+        settings,
+        db.connect(settings.db_path),
+        Wsfe(settings, wsaa),
+        padron_mod.Padron(settings, wsaa),
+    )
 
 
 def _pick_cuit(conn) -> int:
     clientes = db.list_clientes(conn)
     choices = [
-        questionary.Choice(title=f"{c['cuit']} · {c['denominacion']} ({c['condicion_desc']})", value=str(c["cuit"]))
+        questionary.Choice(
+            title=f"{c['cuit']} · {c['denominacion']} ({c['condicion_desc']})", value=str(c["cuit"])
+        )
         for c in clientes
     ]
     if choices:
@@ -30,7 +38,9 @@ def _pick_cuit(conn) -> int:
         answer = questionary.select("CUIT del cliente:", choices=choices).ask()
         if answer:
             return int(answer)
-    return int(questionary.text("CUIT del cliente:", validate=lambda v: v.isdigit() and len(v) == 11).ask())
+    return int(
+        questionary.text("CUIT del cliente:", validate=lambda v: v.isdigit() and len(v) == 11).ask()
+    )
 
 
 @app.command()
@@ -38,7 +48,9 @@ def facturar(
     cuit: int | None = typer.Option(None, help="CUIT del receptor (si falta, se pregunta)."),
     importe: float | None = typer.Option(None, help="Importe total en pesos."),
     concepto: int = typer.Option(CONCEPTO_SERVICIOS, help="1=Productos, 2=Servicios, 3=Ambos."),
-    refresh: bool = typer.Option(False, "--refresh", help="Fuerza reconsulta del padrón (ignora cache)."),
+    refresh: bool = typer.Option(
+        False, "--refresh", help="Fuerza reconsulta del padrón (ignora cache)."
+    ),
 ):
     """Emite una Factura C y guarda el CAE en el historial local."""
     settings, conn, wsfe, padron = _context()
@@ -46,7 +58,11 @@ def facturar(
     if cuit is None:
         cuit = _pick_cuit(conn)
     if importe is None:
-        importe = float(questionary.text("Importe total ($):", validate=lambda v: v.replace(".", "", 1).isdigit()).ask())
+        importe = float(
+            questionary.text(
+                "Importe total ($):", validate=lambda v: v.replace(".", "", 1).isdigit()
+            ).ask()
+        )
 
     cliente = padron_mod.get_cliente(conn, cuit, padron, refresh=refresh)
     typer.echo(f"Receptor: {cliente['denominacion']} · {cliente['condicion_desc']}")
@@ -74,8 +90,9 @@ def facturar(
         cae=result["cae"],
         cae_vto=result["cae_vto"],
     )
+    nro = f"{settings.punto_venta:04d}-{cbte_nro:08d}"
     typer.secho(
-        f"Factura C {settings.punto_venta:04d}-{cbte_nro:08d} autorizada. CAE {result['cae']} (vto {result['cae_vto']})",
+        f"Factura C {nro} autorizada. CAE {result['cae']} (vto {result['cae_vto']})",
         fg=typer.colors.GREEN,
     )
 
@@ -104,7 +121,9 @@ def status():
     puntos = wsfe.puntos_venta()
     if puntos:
         for p in puntos:
-            typer.echo(f"PV {p['nro']:04d}  modo {p['modo']}{'  [BLOQUEADO]' if p['bloqueado'] else ''}")
+            typer.echo(
+                f"PV {p['nro']:04d}  modo {p['modo']}{'  [BLOQUEADO]' if p['bloqueado'] else ''}"
+            )
     else:
         typer.echo("Sin puntos de venta habilitados para web services.")
     ultimo = wsfe.ultimo_autorizado()

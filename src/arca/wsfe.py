@@ -122,5 +122,7 @@ class Wsfe:
         response = self.client.service.FECAESolicitar(Auth=self.auth, FeCAEReq=request)
         result = parse_fecae_response(response)
         if result["resultado"] != "A":
-            raise WsfeError(f"Comprobante rechazado: {'; '.join(result['observaciones']) or 'sin detalle'}")
+            raise WsfeError(
+                f"Comprobante rechazado: {'; '.join(result['observaciones']) or 'sin detalle'}"
+            )
         return result
