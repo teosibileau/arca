@@ -1,0 +1,70 @@
+ahoyapi: v2
+usage: Factura C contra ARCA - setup de certificado y comandos del día a día
+# Los comandos con credenciales cargan .env via la directiva env de ahoy y
+# delegan el chequeo de archivo faltante en check-env, porque ahoy ignora
+# silenciosamente un env file ausente y correría con variables vacías.
+commands:
+  check-env:
+    usage: Falla si no existe .env (ver .env.example).
+    cmd: |
+      [ -f .env ] || { echo "Error: .env no encontrado. Corré 'cp .env.example .env' y completalo." >&2; exit 1; }
+
+  csr:
+    usage: Genera la clave privada y el CSR para el certificado digital de ARCA (una sola vez).
+    env:
+      - .env
+    cmd: |
+      ahoy check-env || exit 1
+      : "${ARCA_CUIT:?ARCA_CUIT no está seteado en .env}"
+      key="${ARCA_KEY_PATH:-certs/arca.key}"
+      csr="${key%.key}.csr"
+      mkdir -p "$(dirname "$key")"
+      if [ -f "$key" ]; then
+        echo "Ya existe $key, no lo piso. Borralo a mano si querés regenerar." >&2
+        exit 1
+      fi
+      openssl genrsa -out "$key" 2048
+      openssl req -new -key "$key" \
+        -subj "/CN=arca-cli/serialNumber=CUIT ${ARCA_CUIT}" \
+        -out "$csr"
+      echo
+      echo "CSR generado en $csr. Pasos en el portal de ARCA (una sola vez):"
+      echo "  1. Administrador de Certificados Digitales: crear un alias y subir el CSR."
+      echo "  2. Descargar el certificado y guardarlo como ${ARCA_CERT_PATH:-certs/arca.crt}."
+      echo "  3. Administrador de Relaciones: autorizar el alias para 'wsfe' y 'ws_sr_constancia_inscripcion'."
+      echo "  4. Verificar con 'ahoy verify-cert' y después 'ahoy status'."
+
+  verify-cert:
+    usage: Verifica que el certificado descargado exista, corresponda a la clave y muestre su vencimiento.
+    env:
+      - .env
+    cmd: |
+      ahoy check-env || exit 1
+      cert="${ARCA_CERT_PATH:-certs/arca.crt}"
+      key="${ARCA_KEY_PATH:-certs/arca.key}"
+      [ -f "$cert" ] || { echo "Error: falta $cert (descargalo del portal y guardalo ahí)." >&2; exit 1; }
+      [ -f "$key" ] || { echo "Error: falta $key (corré 'ahoy csr')." >&2; exit 1; }
+      cert_pub="$(openssl x509 -in "$cert" -pubkey -noout)"
+      key_pub="$(openssl pkey -in "$key" -pubout)"
+      if [ "$cert_pub" != "$key_pub" ]; then
+        echo "Error: el certificado NO corresponde a la clave privada." >&2
+        exit 1
+      fi
+      echo "Certificado y clave coinciden."
+      openssl x509 -in "$cert" -noout -subject -dates
+
+  status:
+    usage: Verifica conectividad y auth contra ARCA (uv run arca status).
+    cmd: uv run arca status
+
+  facturar:
+    usage: Emite una Factura C (uv run arca facturar).
+    cmd: uv run arca facturar "$@"
+
+  historial:
+    usage: Lista las facturas emitidas localmente.
+    cmd: uv run arca historial
+
+  test:
+    usage: Corre la suite de tests (sin red).
+    cmd: uv run pytest "$@"

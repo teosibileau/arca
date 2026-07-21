@@ -1,0 +1,28 @@
+[project]
+name = "arca"
+version = "0.1.0"
+description = "Emisión de Factura C contra los web services de ARCA para monotributistas"
+readme = "README.md"
+authors = [
+    { name = "Teofilo Sibileau", email = "teo.sibileau@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "typer>=0.12",
+    "questionary>=2.0",
+    "zeep>=4.2",
+    "cryptography>=43.0",
+    "pydantic-settings>=2.5",
+]
+
+[project.scripts]
+arca = "arca.cli:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.21,<0.10.0"]
+build-backend = "uv_build"

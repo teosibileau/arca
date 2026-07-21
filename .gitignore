@@ -1,0 +1,20 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Credenciales y material sensible
+.env
+*.pem
+*.key
+*.crt
+*.csr
+
+# Estado local (SQLite, tickets de acceso WSAA)
+data/
