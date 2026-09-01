@@ -1,4 +1,4 @@
-"""CLI: facturar, historial y status."""
+"""CLI: facturar, historial, sync y status."""
 
 from datetime import date
 
@@ -110,6 +110,48 @@ def historial():
             f"{f['emitida_en'][:10]}  {f['punto_venta']:04d}-{f['cbte_nro']:08d}  "
             f"CUIT {f['cuit_receptor']}  ${f['importe']:.2f}  CAE {f['cae']}"
         )
+
+
+@app.command()
+def sync(
+    todo: bool = typer.Option(
+        False, "--todo", help="Reconsulta desde el comprobante 1 (actualiza los ya guardados)."
+    ),
+):
+    """Trae de ARCA las Facturas C del punto de venta y las guarda en el historial local."""
+    settings, conn, wsfe, _ = _context()
+    ultimo = wsfe.ultimo_autorizado()
+    desde = 1 if todo else db.ultimo_local(conn, settings.punto_venta, FACTURA_C) + 1
+    if desde > ultimo:
+        typer.echo(f"Historial al día (último comprobante en ARCA: {ultimo}).")
+        return
+
+    nuevas = 0
+    for nro in range(desde, ultimo + 1):
+        f = wsfe.consultar(nro)
+        if f is None:
+            typer.echo(f"{settings.punto_venta:04d}-{nro:08d}  no existe en ARCA, salteado")
+            continue
+        created = db.upsert_factura(
+            conn,
+            punto_venta=settings.punto_venta,
+            cbte_tipo=FACTURA_C,
+            cbte_nro=nro,
+            cuit_receptor=f["doc_nro"],
+            importe=f["importe"],
+            concepto=f["concepto"],
+            cae=f["cae"],
+            cae_vto=f["cae_vto"],
+            emitida_en=f["fecha"],
+        )
+        nuevas += created
+        typer.echo(
+            f"{f['fecha']}  {settings.punto_venta:04d}-{nro:08d}  "
+            f"CUIT {f['doc_nro']}  ${f['importe']:.2f}  CAE {f['cae']}"
+        )
+    typer.secho(
+        f"Sincronizadas {ultimo - desde + 1} facturas ({nuevas} nuevas).", fg=typer.colors.GREEN
+    )
 
 
 @app.command()

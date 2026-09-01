@@ -59,3 +59,42 @@ def test_status(tmp_path):
         result = runner.invoke(app, ["status"])
     assert result.exit_code == 0
     assert "12" in result.output
+
+
+def _factura_arca(nro):
+    return {
+        "cbte_nro": nro,
+        "fecha": f"2026-01-{nro:02d}",
+        "doc_tipo": 80,
+        "doc_nro": 30111222333,
+        "importe": 1000.0 * nro,
+        "concepto": 2,
+        "cae": f"cae{nro}",
+        "cae_vto": "20260131",
+        "resultado": "A",
+    }
+
+
+def test_sync_trae_solo_lo_que_falta(tmp_path):
+    wsfe = Mock()
+    wsfe.ultimo_autorizado.return_value = 3
+    wsfe.consultar.side_effect = lambda nro: None if nro == 2 else _factura_arca(nro)
+    ctx = _context(tmp_path, wsfe=wsfe)
+
+    with patch("arca.cli._context", return_value=ctx):
+        result = runner.invoke(app, ["sync"])
+    assert result.exit_code == 0, result.output
+    assert "salteado" in result.output
+    assert "2 nuevas" in result.output
+    assert [f["cbte_nro"] for f in db.list_facturas(ctx[1])] == [3, 1]
+
+    wsfe.consultar.reset_mock()
+    with patch("arca.cli._context", return_value=ctx):
+        result = runner.invoke(app, ["sync"])
+    assert "al día" in result.output
+    wsfe.consultar.assert_not_called()
+
+    with patch("arca.cli._context", return_value=ctx):
+        result = runner.invoke(app, ["sync", "--todo"])
+    assert "0 nuevas" in result.output
+    assert wsfe.consultar.call_count == 3

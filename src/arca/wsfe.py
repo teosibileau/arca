@@ -79,6 +79,36 @@ class WsfeError(Exception):
     pass
 
 
+# FECompConsultar: "No existen datos en nuestros registros para los parametros ingresados".
+_SIN_DATOS = 602
+
+
+def _iso(fch: str) -> str:
+    """AAAAMMDD (formato ARCA) -> AAAA-MM-DD."""
+    return f"{fch[:4]}-{fch[4:6]}-{fch[6:8]}"
+
+
+def parse_fecompconsultar_response(response) -> dict | None:
+    """Normaliza la respuesta de FECompConsultar. None si el comprobante no existe."""
+    if response.Errors:
+        errores = list(response.Errors.Err)
+        if any(e.Code == _SIN_DATOS for e in errores):
+            return None
+        raise WsfeError("; ".join(f"{e.Code}: {e.Msg}" for e in errores))
+    r = response.ResultGet
+    return {
+        "cbte_nro": r.CbteDesde,
+        "fecha": _iso(r.CbteFch),
+        "doc_tipo": r.DocTipo,
+        "doc_nro": r.DocNro,
+        "importe": float(r.ImpTotal),
+        "concepto": r.Concepto,
+        "cae": r.CodAutorizacion,
+        "cae_vto": r.FchVto,
+        "resultado": r.Resultado,
+    }
+
+
 class Wsfe:
     def __init__(self, settings, wsaa):
         self.settings = settings
@@ -116,6 +146,18 @@ class Wsfe:
             Auth=self.auth, PtoVta=self.settings.punto_venta, CbteTipo=FACTURA_C
         )
         return r.CbteNro
+
+    def consultar(self, cbte_nro: int) -> dict | None:
+        """Consulta una Factura C ya emitida en el punto de venta configurado."""
+        response = self.client.service.FECompConsultar(
+            Auth=self.auth,
+            FeCompConsReq={
+                "CbteTipo": FACTURA_C,
+                "CbteNro": cbte_nro,
+                "PtoVta": self.settings.punto_venta,
+            },
+        )
+        return parse_fecompconsultar_response(response)
 
     def autorizar(self, factura: FacturaC) -> dict:
         request = build_fecae_request(factura)
