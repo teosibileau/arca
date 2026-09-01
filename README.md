@@ -19,7 +19,9 @@ Requiere [ahoy](https://github.com/ahoy-cli/ahoy) (`brew install ahoy`).
 
 3. En **Administrador de Relaciones de Clave Fiscal**, autorizar ese alias para DOS servicios:
    - **Facturación Electrónica** (`wsfe`)
-   - **Constancia de Inscripción** (`ws_sr_constancia_inscripcion`)
+   - **Consulta de Constancia de Inscripción** (`ws_sr_constancia_inscripcion`)
+
+   Para cada uno: **Nueva Relación** → en "Servicio" tocar **Buscar** (aparecen los logos de organismos) → logo de **ARCA** → rama **WebServices** (no "Servicios Interactivos") → elegir el servicio en la lista alfabética → en "Representante" elegir **Computador Fiscal** y el alias del certificado. Sin la segunda relación, `facturar` y `padron` fallan con "Computador no autorizado a acceder al servicio".
 
 4. Dar de alta un punto de venta para web services (Comprobantes en línea, ABM de puntos de venta) y ponerlo en `ARCA_PUNTO_VENTA`.
 
