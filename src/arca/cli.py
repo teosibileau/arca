@@ -1,4 +1,4 @@
-"""CLI: facturar, historial, sync y status."""
+"""CLI: facturar, historial, sync, padron y status."""
 
 from datetime import date
 
@@ -110,6 +110,49 @@ def historial():
             f"{f['emitida_en'][:10]}  {f['punto_venta']:04d}-{f['cbte_nro']:08d}  "
             f"CUIT {f['cuit_receptor']}  ${f['importe']:.2f}  CAE {f['cae']}"
         )
+
+
+@app.command()
+def padron(cuit: int = typer.Argument(help="CUIT a consultar.")):
+    """Consulta la situación tributaria de un CUIT en el padrón y actualiza el cache local."""
+    from rich.console import Console
+    from rich.table import Table
+
+    _, conn, _, padron = _context()
+    d = padron.consultar_detalle(cuit)
+    db.upsert_cliente(
+        conn,
+        cuit=cuit,
+        denominacion=d["denominacion"],
+        condicion_iva_id=d["condicion_iva_id"],
+        condicion_desc=d["condicion_desc"],
+    )
+
+    tabla = Table(title=f"CUIT {d['cuit']}", show_header=False, title_justify="left")
+    tabla.add_column(style="bold")
+    tabla.add_column()
+    tabla.add_row("Denominación", d["denominacion"])
+    tabla.add_row("Condición IVA", f"{d['condicion_desc']} (id {d['condicion_iva_id']})")
+    tabla.add_row("Tipo de persona", d["tipo_persona"] or "-")
+    tabla.add_row("Estado de clave", d["estado_clave"] or "-")
+    tabla.add_row("Domicilio fiscal", d["domicilio"] or "-")
+    if d["categoria_monotributo"]:
+        tabla.add_row("Cat. monotributo", d["categoria_monotributo"])
+    if d["mes_cierre"]:
+        tabla.add_row("Mes de cierre", str(d["mes_cierre"]))
+    if d["actividades"]:
+        tabla.add_row("Actividades", "\n".join(d["actividades"]))
+    if d["impuestos"]:
+        tabla.add_row(
+            "Impuestos",
+            "\n".join(
+                f"{i['descripcion']} ({i['estado']}"
+                + (f", desde {i['periodo']}" if i["periodo"] else "")
+                + ")"
+                for i in d["impuestos"]
+            ),
+        )
+    Console().print(tabla)
 
 
 @app.command()

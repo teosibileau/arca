@@ -65,6 +65,10 @@ commands:
     usage: Lista las facturas emitidas localmente.
     cmd: uv run arca historial
 
+  padron:
+    usage: Consulta la situación tributaria de un CUIT en el padrón (tabla con detalle).
+    cmd: uv run arca padron "$@"
+
   sync:
     usage: Trae de ARCA las facturas del punto de venta al historial local (--todo para reconsultar todas).
     cmd: uv run arca sync "$@"
