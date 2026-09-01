@@ -1,10 +1,15 @@
 from datetime import date
+from unittest.mock import Mock
+
+import pytest
 
 from arca.wsfe import (
     CONCEPTO_PRODUCTOS,
     CONCEPTO_SERVICIOS,
     FacturaC,
+    WsfeError,
     build_fecae_request,
+    parse_fecompconsultar_response,
 )
 
 
@@ -41,3 +46,43 @@ def test_productos_omite_fechas_de_servicio():
         0
     ]
     assert "FchServDesde" not in det
+
+
+def _consultar_response(**kw):
+    r = Mock(Errors=None)
+    r.ResultGet = Mock(
+        CbteDesde=15,
+        CbteFch="20170928",
+        DocTipo=80,
+        DocNro=27045612916,
+        ImpTotal=150000.0,
+        Concepto=2,
+        CodAutorizacion="67395569265454",
+        FchVto="20171008",
+        Resultado="A",
+        **kw,
+    )
+    return r
+
+
+def test_consultar_normaliza_comprobante():
+    f = parse_fecompconsultar_response(_consultar_response())
+    assert f["cbte_nro"] == 15
+    assert f["fecha"] == "2017-09-28"
+    assert f["doc_nro"] == 27045612916
+    assert f["importe"] == 150000.0
+    assert f["cae"] == "67395569265454"
+    assert f["cae_vto"] == "20171008"
+
+
+def test_consultar_inexistente_devuelve_none():
+    r = Mock()
+    r.Errors.Err = [Mock(Code=602, Msg="No existen datos")]
+    assert parse_fecompconsultar_response(r) is None
+
+
+def test_consultar_otro_error_levanta():
+    r = Mock()
+    r.Errors.Err = [Mock(Code=600, Msg="Token invalido")]
+    with pytest.raises(WsfeError, match="600"):
+        parse_fecompconsultar_response(r)

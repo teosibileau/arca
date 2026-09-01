@@ -131,6 +131,48 @@ def insert_factura(
     )
 
 
+def upsert_factura(
+    conn: Connection,
+    *,
+    punto_venta: int,
+    cbte_tipo: int,
+    cbte_nro: int,
+    cuit_receptor: int,
+    importe: float,
+    concepto: int,
+    cae: str,
+    cae_vto: str,
+    emitida_en: str,
+) -> bool:
+    """Inserta o actualiza por (punto_venta, cbte_tipo, cbte_nro). True si era nueva."""
+    _, created = conn.run(
+        Factura.objects.update_or_create(
+            punto_venta=punto_venta,
+            cbte_tipo=cbte_tipo,
+            cbte_nro=cbte_nro,
+            defaults={
+                "cuit_receptor": cuit_receptor,
+                "importe": importe,
+                "concepto": concepto,
+                "cae": cae,
+                "cae_vto": cae_vto,
+                "emitida_en": emitida_en,
+            },
+        )
+    )
+    return created
+
+
+def ultimo_local(conn: Connection, punto_venta: int, cbte_tipo: int) -> int:
+    """Mayor número de comprobante guardado localmente (0 si no hay ninguno)."""
+    facturas = conn.run(
+        Factura.objects.filter(punto_venta=punto_venta, cbte_tipo=cbte_tipo)
+        .order_by("-cbte_nro")
+        .all()
+    )
+    return facturas[0].cbte_nro if facturas else 0
+
+
 def list_facturas(conn: Connection) -> list[dict]:
-    facturas = conn.run(Factura.objects.order_by("-emitida_en").all())
+    facturas = conn.run(Factura.objects.order_by("-emitida_en", "-cbte_nro").all())
     return [f.model_dump() for f in facturas]
