@@ -1,5 +1,6 @@
 """Situación tributaria del receptor via ws_sr_constancia_inscripcion, con cache en SQLite."""
 
+import html
 from datetime import UTC, datetime, timedelta
 
 from arca import db
@@ -34,6 +35,53 @@ def _denominacion(persona) -> str:
     return f"{getattr(datos, 'nombre', '') or ''} {getattr(datos, 'apellido', '') or ''}".strip()
 
 
+def _actividades(persona) -> list[str]:
+    """Actividades declaradas, la principal primero (monotributo o régimen general)."""
+    fuentes = []
+    mono = getattr(persona, "datosMonotributo", None)
+    if mono:
+        principal = getattr(mono, "actividadMonotributista", None)
+        if principal:
+            fuentes.append(principal)
+        fuentes.extend(getattr(mono, "actividad", None) or [])
+    regimen = getattr(persona, "datosRegimenGeneral", None)
+    if regimen:
+        fuentes.extend(getattr(regimen, "actividad", None) or [])
+    vistas: dict[int, str] = {}
+    for a in fuentes:
+        vistas.setdefault(a.idActividad, f"{a.idActividad}  {a.descripcionActividad}")
+    return list(vistas.values())
+
+
+def _impuestos(persona) -> list[dict]:
+    """Impuestos con estado, de la rama que corresponda."""
+    rama = getattr(persona, "datosMonotributo", None) or getattr(
+        persona, "datosRegimenGeneral", None
+    )
+    return [
+        {
+            "descripcion": i.descripcionImpuesto,
+            "estado": i.estadoImpuesto,
+            "periodo": getattr(i, "periodo", None),
+        }
+        for i in (getattr(rama, "impuesto", None) or [])
+    ]
+
+
+def _domicilio(datos_generales) -> str | None:
+    dom = getattr(datos_generales, "domicilioFiscal", None)
+    if not dom:
+        return None
+    partes = [
+        getattr(dom, "direccion", None),
+        getattr(dom, "localidad", None) or getattr(dom, "datoAdicional", None),
+        getattr(dom, "descripcionProvincia", None),
+        getattr(dom, "codPostal", None),
+    ]
+    # El padrón devuelve entidades HTML sin decodificar (ej. &#209; por Ñ).
+    return html.unescape(", ".join(str(x) for x in partes if x))
+
+
 class Padron:
     def __init__(self, settings, wsaa):
         self.settings = settings
@@ -61,6 +109,31 @@ class Padron:
             "denominacion": _denominacion(persona),
             "condicion_iva_id": condicion_id,
             "condicion_desc": condicion_desc,
+        }
+
+    def consultar_detalle(self, cuit: int) -> dict:
+        """Como consultar(), más datos generales, domicilio, actividades e impuestos."""
+        ta = self.wsaa.get_ta(SERVICE)
+        r = self.client.service.getPersona(
+            token=ta["token"], sign=ta["sign"], cuitRepresentada=self.settings.cuit, idPersona=cuit
+        )
+        persona = getattr(r, "persona", None) or r
+        condicion_id, condicion_desc = _condicion_from_persona(persona)
+        datos = persona.datosGenerales
+        mono = getattr(persona, "datosMonotributo", None)
+        categoria = getattr(mono, "categoriaMonotributo", None) if mono else None
+        return {
+            "cuit": cuit,
+            "denominacion": _denominacion(persona),
+            "condicion_iva_id": condicion_id,
+            "condicion_desc": condicion_desc,
+            "tipo_persona": getattr(datos, "tipoPersona", None),
+            "estado_clave": getattr(datos, "estadoClave", None),
+            "mes_cierre": getattr(datos, "mesCierre", None),
+            "domicilio": _domicilio(datos),
+            "categoria_monotributo": categoria.descripcionCategoria if categoria else None,
+            "actividades": _actividades(persona),
+            "impuestos": _impuestos(persona),
         }
 
 

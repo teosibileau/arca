@@ -66,7 +66,7 @@ commands:
     cmd: uv run arca historial
 
   padron:
-    usage: Consulta la situación tributaria de un CUIT (--refresh para ignorar el cache).
+    usage: Consulta la situación tributaria de un CUIT en el padrón (tabla con detalle).
     cmd: uv run arca padron "$@"
 
   sync:

@@ -113,19 +113,46 @@ def historial():
 
 
 @app.command()
-def padron(
-    cuit: int = typer.Argument(help="CUIT a consultar."),
-    refresh: bool = typer.Option(
-        False, "--refresh", help="Fuerza reconsulta del padrón (ignora cache)."
-    ),
-):
-    """Consulta la situación tributaria de un CUIT (cache local de 30 días)."""
+def padron(cuit: int = typer.Argument(help="CUIT a consultar.")):
+    """Consulta la situación tributaria de un CUIT en el padrón y actualiza el cache local."""
+    from rich.console import Console
+    from rich.table import Table
+
     _, conn, _, padron = _context()
-    cliente = padron_mod.get_cliente(conn, cuit, padron, refresh=refresh)
-    typer.echo(
-        f"{cliente['cuit']}  {cliente['denominacion']}  "
-        f"{cliente['condicion_desc']} (id {cliente['condicion_iva_id']})"
+    d = padron.consultar_detalle(cuit)
+    db.upsert_cliente(
+        conn,
+        cuit=cuit,
+        denominacion=d["denominacion"],
+        condicion_iva_id=d["condicion_iva_id"],
+        condicion_desc=d["condicion_desc"],
     )
+
+    tabla = Table(title=f"CUIT {d['cuit']}", show_header=False, title_justify="left")
+    tabla.add_column(style="bold")
+    tabla.add_column()
+    tabla.add_row("Denominación", d["denominacion"])
+    tabla.add_row("Condición IVA", f"{d['condicion_desc']} (id {d['condicion_iva_id']})")
+    tabla.add_row("Tipo de persona", d["tipo_persona"] or "-")
+    tabla.add_row("Estado de clave", d["estado_clave"] or "-")
+    tabla.add_row("Domicilio fiscal", d["domicilio"] or "-")
+    if d["categoria_monotributo"]:
+        tabla.add_row("Cat. monotributo", d["categoria_monotributo"])
+    if d["mes_cierre"]:
+        tabla.add_row("Mes de cierre", str(d["mes_cierre"]))
+    if d["actividades"]:
+        tabla.add_row("Actividades", "\n".join(d["actividades"]))
+    if d["impuestos"]:
+        tabla.add_row(
+            "Impuestos",
+            "\n".join(
+                f"{i['descripcion']} ({i['estado']}"
+                + (f", desde {i['periodo']}" if i["periodo"] else "")
+                + ")"
+                for i in d["impuestos"]
+            ),
+        )
+    Console().print(tabla)
 
 
 @app.command()
