@@ -35,12 +35,12 @@ uv run arca facturar    # emite una Factura C (pregunta lo que falte)
 uv run arca facturar --cuit 30111222333 --importe 150000
 uv run arca historial   # facturas emitidas, guardadas localmente
 uv run arca sync        # trae de ARCA las facturas que faltan en el historial local
-uv run arca padron 30111222333   # situación tributaria del CUIT (denominación y condición de IVA)
+uv run arca padron 30111222333   # tabla con la situación tributaria del CUIT (condición de IVA, domicilio, actividades, impuestos)
 ```
 
 `sync` consulta comprobante por comprobante (`FECompConsultar`) desde el último guardado hasta el último autorizado en ARCA, así el historial incluye también lo emitido por otros medios (portal, Facturante, etc.). `--todo` reconsulta desde el 1 y actualiza los ya guardados.
 
-`facturar` cachea la situación tributaria del receptor por 30 días en `data/arca.sqlite3` (gitignoreado); `--refresh` fuerza la reconsulta al padrón.
+`facturar` muestra un resumen (número, receptor, concepto, importe, ambiente) y pide confirmación antes de emitir; `--si` la saltea para uso scripteado. Cachea la situación tributaria del receptor por 30 días en `data/arca.sqlite3` (gitignoreado); `--refresh` fuerza la reconsulta al padrón, y `padron` también actualiza ese cache.
 
 ## Tests
 
