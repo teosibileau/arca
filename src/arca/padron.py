@@ -53,7 +53,8 @@ class Padron:
         r = self.client.service.getPersona(
             token=ta["token"], sign=ta["sign"], cuitRepresentada=self.settings.cuit, idPersona=cuit
         )
-        persona = r.persona
+        # Homologación envuelve la respuesta en .persona; producción la devuelve plana.
+        persona = getattr(r, "persona", None) or r
         condicion_id, condicion_desc = _condicion_from_persona(persona)
         return {
             "cuit": cuit,

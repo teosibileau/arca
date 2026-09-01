@@ -1,4 +1,4 @@
-"""CLI: facturar, historial, sync y status."""
+"""CLI: facturar, historial, sync, padron y status."""
 
 from datetime import date
 
@@ -110,6 +110,22 @@ def historial():
             f"{f['emitida_en'][:10]}  {f['punto_venta']:04d}-{f['cbte_nro']:08d}  "
             f"CUIT {f['cuit_receptor']}  ${f['importe']:.2f}  CAE {f['cae']}"
         )
+
+
+@app.command()
+def padron(
+    cuit: int = typer.Argument(help="CUIT a consultar."),
+    refresh: bool = typer.Option(
+        False, "--refresh", help="Fuerza reconsulta del padrón (ignora cache)."
+    ),
+):
+    """Consulta la situación tributaria de un CUIT (cache local de 30 días)."""
+    _, conn, _, padron = _context()
+    cliente = padron_mod.get_cliente(conn, cuit, padron, refresh=refresh)
+    typer.echo(
+        f"{cliente['cuit']}  {cliente['denominacion']}  "
+        f"{cliente['condicion_desc']} (id {cliente['condicion_iva_id']})"
+    )
 
 
 @app.command()

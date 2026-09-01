@@ -98,3 +98,21 @@ def test_sync_trae_solo_lo_que_falta(tmp_path):
         result = runner.invoke(app, ["sync", "--todo"])
     assert "0 nuevas" in result.output
     assert wsfe.consultar.call_count == 3
+
+
+def test_padron_consulta_cuit(tmp_path):
+    cliente = {
+        "cuit": 30111222333,
+        "denominacion": "ACME SA",
+        "condicion_desc": "IVA Responsable Inscripto",
+        "condicion_iva_id": 1,
+    }
+    with (
+        patch("arca.cli._context", return_value=_context(tmp_path)),
+        patch("arca.padron.get_cliente", return_value=cliente) as get_cliente,
+    ):
+        result = runner.invoke(app, ["padron", "30111222333", "--refresh"])
+    assert result.exit_code == 0, result.output
+    assert "ACME SA" in result.output
+    assert "id 1" in result.output
+    assert get_cliente.call_args.kwargs["refresh"] is True
