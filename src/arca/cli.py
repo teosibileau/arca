@@ -51,6 +51,7 @@ def facturar(
     refresh: bool = typer.Option(
         False, "--refresh", help="Fuerza reconsulta del padrón (ignora cache)."
     ),
+    si: bool = typer.Option(False, "--si", help="Emite sin pedir confirmación."),
 ):
     """Emite una Factura C y guarda el CAE en el historial local."""
     settings, conn, wsfe, padron = _context()
@@ -78,6 +79,21 @@ def facturar(
         condicion_iva_receptor=cliente["condicion_iva_id"],
         fecha=date.today(),
     )
+
+    nro = f"{settings.punto_venta:04d}-{cbte_nro:08d}"
+    concepto_desc = {1: "Productos", 2: "Servicios", 3: "Productos y servicios"}.get(
+        concepto, str(concepto)
+    )
+    typer.echo()
+    typer.echo(f"  Factura C {nro} ({settings.env})")
+    typer.echo(f"  Receptor: {cuit} · {cliente['denominacion']} · {cliente['condicion_desc']}")
+    typer.echo(f"  Concepto: {concepto_desc} · Fecha: {factura.fecha:%d/%m/%Y}")
+    typer.echo(f"  Importe:  ${importe:,.2f}")
+    typer.echo()
+    if not si and not typer.confirm("¿Emitir la factura?"):
+        typer.secho("Cancelado, no se emitió nada.", fg=typer.colors.YELLOW)
+        raise typer.Exit(1)
+
     result = wsfe.autorizar(factura)
     db.insert_factura(
         conn,
@@ -90,7 +106,6 @@ def facturar(
         cae=result["cae"],
         cae_vto=result["cae_vto"],
     )
-    nro = f"{settings.punto_venta:04d}-{cbte_nro:08d}"
     typer.secho(
         f"Factura C {nro} autorizada. CAE {result['cae']} (vto {result['cae_vto']})",
         fg=typer.colors.GREEN,
