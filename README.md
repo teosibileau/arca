@@ -21,11 +21,19 @@ Requiere [ahoy](https://github.com/ahoy-cli/ahoy) (`brew install ahoy`).
    - **Facturación Electrónica** (`wsfe`)
    - **Consulta de Constancia de Inscripción** (`ws_sr_constancia_inscripcion`)
 
-   Para cada uno: **Nueva Relación** → en "Servicio" tocar **Buscar** (aparecen los logos de organismos) → logo de **ARCA** → rama **WebServices** (no "Servicios Interactivos") → elegir el servicio en la lista alfabética → en "Representante" elegir **Computador Fiscal** y el alias del certificado. Sin la segunda relación, `facturar` y `padron` fallan con "Computador no autorizado a acceder al servicio".
+4. Para cada uno de esos servicios:
+   - **Nueva Relación**
+   - En "Servicio" tocar **Buscar** (aparecen los logos de organismos)
+   - Logo de **ARCA**
+   - Rama **WebServices** (no "Servicios Interactivos")
+   - Elegir el servicio en la lista alfabética
+   - En "Representante" elegir **Computador Fiscal** y el alias del certificado
 
-4. Dar de alta un punto de venta para web services (Comprobantes en línea, ABM de puntos de venta) y ponerlo en `ARCA_PUNTO_VENTA`.
+   Sin la segunda relación, `facturar` y `padron` fallan con "Computador no autorizado a acceder al servicio".
 
-5. `ahoy verify-cert` chequea que el certificado corresponda a la clave y muestra el vencimiento; después `ahoy status` valida contra ARCA.
+5. Dar de alta un punto de venta para web services (Comprobantes en línea, ABM de puntos de venta) y ponerlo en `ARCA_PUNTO_VENTA`.
+
+6. `ahoy verify-cert` chequea que el certificado corresponda a la clave y muestra el vencimiento; después `ahoy status` valida contra ARCA.
 
 Para el ambiente de homologación (`ARCA_ENV=homo`) el certificado se gestiona en el portal de homologación y no emite facturas reales. Probá ahí primero.
 
