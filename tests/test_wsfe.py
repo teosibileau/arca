@@ -9,6 +9,8 @@ from arca.wsfe import (
     FacturaC,
     Wsfe,
     WsfeError,
+    _fch,
+    _iso,
     build_fecae_request,
     parse_fecae_response,
     parse_fecompconsultar_response,
@@ -134,3 +136,9 @@ def test_autorizar_rechazada_levanta_con_observaciones():
     factura = _factura(concepto=CONCEPTO_PRODUCTOS)
     with pytest.raises(WsfeError, match="10018"):
         w.autorizar(factura)
+
+
+def test_helpers_de_fecha_ida_y_vuelta():
+    assert _fch(date(2017, 9, 28)) == "20170928"
+    assert _iso("20170928") == "2017-09-28"
+    assert _iso(_fch(date(2026, 1, 5))) == "2026-01-05"
