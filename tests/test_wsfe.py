@@ -9,6 +9,7 @@ from arca.wsfe import (
     FacturaC,
     WsfeError,
     build_fecae_request,
+    parse_fecae_response,
     parse_fecompconsultar_response,
 )
 
@@ -86,3 +87,36 @@ def test_consultar_otro_error_levanta():
     r.Errors.Err = [Mock(Code=600, Msg="Token invalido")]
     with pytest.raises(WsfeError, match="600"):
         parse_fecompconsultar_response(r)
+
+
+def _fecae_response(resultado="A", cae="75001234567890", obs=None, errors=None):
+    det = Mock(Resultado=resultado, CAE=cae, CAEFchVto="20260930" if cae else None)
+    det.Observaciones = Mock(Obs=[Mock(Code=c, Msg=m) for c, m in obs]) if obs else None
+    r = Mock(Errors=Mock(Err=[Mock(Code=c, Msg=m) for c, m in errors]) if errors else None)
+    r.FeDetResp.FECAEDetResponse = [det]
+    return r
+
+
+def test_parse_fecae_aprobada():
+    out = parse_fecae_response(_fecae_response())
+    assert out == {
+        "resultado": "A",
+        "cae": "75001234567890",
+        "cae_vto": "20260930",
+        "observaciones": [],
+    }
+
+
+def test_parse_fecae_rechazada_junta_observaciones():
+    out = parse_fecae_response(
+        _fecae_response(resultado="R", cae=None, obs=[(10018, "CUIT receptor inválido")])
+    )
+    assert out["resultado"] == "R"
+    assert out["cae"] is None
+    assert out["cae_vto"] is None
+    assert out["observaciones"] == ["10018: CUIT receptor inválido"]
+
+
+def test_parse_fecae_errores_globales_levanta():
+    with pytest.raises(WsfeError, match="600"):
+        parse_fecae_response(_fecae_response(errors=[(600, "Token invalido")]))
