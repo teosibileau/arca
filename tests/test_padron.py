@@ -1,6 +1,6 @@
 from types import SimpleNamespace as NS
 
-from arca.padron import _condicion_from_persona, _denominacion
+from arca.padron import _actividades, _condicion_from_persona, _denominacion
 
 
 def _persona(mono=None, impuestos=None):
@@ -44,3 +44,21 @@ def test_denominacion_arma_nombre_y_apellido():
 def test_denominacion_tolera_campos_nulos():
     persona = NS(datosGenerales=NS(razonSocial=None, nombre=None, apellido="DUFFY"))
     assert _denominacion(persona) == "DUFFY"
+
+
+def _act(id_, desc):
+    return NS(idActividad=id_, descripcionActividad=desc)
+
+
+def test_actividades_principal_primero_y_sin_duplicados():
+    mono = NS(
+        actividadMonotributista=_act(620100, "CONSULTORES"),
+        actividad=[_act(731009, "PUBLICIDAD")],
+    )
+    rg = NS(actividad=[_act(620100, "CONSULTORES")])
+    persona = NS(datosMonotributo=mono, datosRegimenGeneral=rg)
+    assert _actividades(persona) == ["620100  CONSULTORES", "731009  PUBLICIDAD"]
+
+
+def test_actividades_sin_ramas_devuelve_vacio():
+    assert _actividades(NS(datosMonotributo=None, datosRegimenGeneral=None)) == []
