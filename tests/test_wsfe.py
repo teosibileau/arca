@@ -7,8 +7,12 @@ from arca.wsfe import (
     CONCEPTO_PRODUCTOS,
     CONCEPTO_SERVICIOS,
     FacturaC,
+    Wsfe,
     WsfeError,
+    _fch,
+    _iso,
     build_fecae_request,
+    parse_fecae_response,
     parse_fecompconsultar_response,
 )
 
@@ -86,3 +90,55 @@ def test_consultar_otro_error_levanta():
     r.Errors.Err = [Mock(Code=600, Msg="Token invalido")]
     with pytest.raises(WsfeError, match="600"):
         parse_fecompconsultar_response(r)
+
+
+def _fecae_response(resultado="A", cae="75001234567890", obs=None, errors=None):
+    det = Mock(Resultado=resultado, CAE=cae, CAEFchVto="20260930" if cae else None)
+    det.Observaciones = Mock(Obs=[Mock(Code=c, Msg=m) for c, m in obs]) if obs else None
+    r = Mock(Errors=Mock(Err=[Mock(Code=c, Msg=m) for c, m in errors]) if errors else None)
+    r.FeDetResp.FECAEDetResponse = [det]
+    return r
+
+
+def test_parse_fecae_aprobada():
+    out = parse_fecae_response(_fecae_response())
+    assert out == {
+        "resultado": "A",
+        "cae": "75001234567890",
+        "cae_vto": "20260930",
+        "observaciones": [],
+    }
+
+
+def test_parse_fecae_rechazada_junta_observaciones():
+    out = parse_fecae_response(
+        _fecae_response(resultado="R", cae=None, obs=[(10018, "CUIT receptor inválido")])
+    )
+    assert out["resultado"] == "R"
+    assert out["cae"] is None
+    assert out["cae_vto"] is None
+    assert out["observaciones"] == ["10018: CUIT receptor inválido"]
+
+
+def test_parse_fecae_errores_globales_levanta():
+    with pytest.raises(WsfeError, match="600"):
+        parse_fecae_response(_fecae_response(errors=[(600, "Token invalido")]))
+
+
+def test_autorizar_rechazada_levanta_con_observaciones():
+    wsaa = Mock()
+    wsaa.get_ta.return_value = {"token": "t", "sign": "s"}
+    w = Wsfe(Mock(cuit=20299528015), wsaa)
+    w._client = Mock()
+    w._client.service.FECAESolicitar.return_value = _fecae_response(
+        resultado="R", cae=None, obs=[(10018, "CUIT receptor inválido")]
+    )
+    factura = _factura(concepto=CONCEPTO_PRODUCTOS)
+    with pytest.raises(WsfeError, match="10018"):
+        w.autorizar(factura)
+
+
+def test_helpers_de_fecha_ida_y_vuelta():
+    assert _fch(date(2017, 9, 28)) == "20170928"
+    assert _iso("20170928") == "2017-09-28"
+    assert _iso(_fch(date(2026, 1, 5))) == "2026-01-05"

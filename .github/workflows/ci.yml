@@ -32,3 +32,30 @@ jobs:
 
       - name: Run tests
         run: uv run pytest
+
+  commits:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Mismo validador que el hook local de commit-msg, aplicado a cada
+      # commit del PR.
+      - name: Validate conventional commits
+        run: |
+          pip install conventional-pre-commit==4.0.0
+          ok=1
+          for sha in $(git rev-list ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}); do
+            git log -1 --format=%B "$sha" > /tmp/msg
+            if ! conventional-pre-commit /tmp/msg; then
+              echo "::error::Commit $sha no sigue conventional commits"
+              ok=0
+            fi
+          done
+          [ "$ok" -eq 1 ]
