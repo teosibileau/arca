@@ -168,3 +168,26 @@ def test_pick_cuit_sin_cache_pide_texto(tmp_path):
     text.return_value.ask.return_value = "20111111112"
     with patch("arca.cli.questionary.text", text):
         assert _pick_cuit(conn) == 20111111112
+
+
+def test_historial_formatea_lineas(tmp_path):
+    ctx = _context(tmp_path)
+    db.upsert_factura(
+        ctx[1],
+        punto_venta=3,
+        cbte_tipo=11,
+        cbte_nro=15,
+        cuit_receptor=27045612916,
+        importe=150000.0,
+        concepto=2,
+        cae="67395569265454",
+        cae_vto="20171008",
+        emitida_en="2017-09-28",
+    )
+    with patch("arca.cli._context", return_value=ctx):
+        result = runner.invoke(app, ["historial"])
+    assert result.exit_code == 0
+    assert (
+        "2017-09-28  0003-00000015  CUIT 27045612916  $150000.00  CAE 67395569265454"
+        in result.output
+    )
