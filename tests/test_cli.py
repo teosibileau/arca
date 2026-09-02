@@ -34,13 +34,38 @@ def test_facturar_emite_y_guarda(tmp_path):
         patch("arca.cli._context", return_value=ctx),
         patch("arca.padron.get_cliente", return_value=cliente),
     ):
-        result = runner.invoke(app, ["facturar", "--cuit", "30111222333", "--importe", "1000"])
+        result = runner.invoke(
+            app, ["facturar", "--cuit", "30111222333", "--importe", "1000"], input="y\n"
+        )
 
     assert result.exit_code == 0, result.output
+    assert "¿Emitir la factura?" in result.output
     assert "CAE 999" in result.output
     facturas = db.list_facturas(ctx[1])
     assert len(facturas) == 1
     assert facturas[0]["cbte_nro"] == 8
+
+
+def test_facturar_cancelado_no_emite(tmp_path):
+    wsfe = Mock()
+    wsfe.ultimo_autorizado.return_value = 7
+    ctx = _context(tmp_path, wsfe=wsfe)
+    cliente = {
+        "denominacion": "ACME SA",
+        "condicion_desc": "IVA Responsable Inscripto",
+        "condicion_iva_id": 1,
+    }
+    with (
+        patch("arca.cli._context", return_value=ctx),
+        patch("arca.padron.get_cliente", return_value=cliente),
+    ):
+        result = runner.invoke(
+            app, ["facturar", "--cuit", "30111222333", "--importe", "1000"], input="n\n"
+        )
+    assert result.exit_code == 1
+    assert "Cancelado" in result.output
+    wsfe.autorizar.assert_not_called()
+    assert db.list_facturas(ctx[1]) == []
 
 
 def test_historial_vacio(tmp_path):

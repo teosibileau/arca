@@ -58,7 +58,7 @@ commands:
     cmd: uv run arca status
 
   facturar:
-    usage: Emite una Factura C (uv run arca facturar).
+    usage: Emite una Factura C, con confirmación previa (--si para saltearla).
     cmd: uv run arca facturar "$@"
 
   historial:
