@@ -7,6 +7,7 @@ from arca.wsfe import (
     CONCEPTO_PRODUCTOS,
     CONCEPTO_SERVICIOS,
     FacturaC,
+    Wsfe,
     WsfeError,
     build_fecae_request,
     parse_fecae_response,
@@ -120,3 +121,16 @@ def test_parse_fecae_rechazada_junta_observaciones():
 def test_parse_fecae_errores_globales_levanta():
     with pytest.raises(WsfeError, match="600"):
         parse_fecae_response(_fecae_response(errors=[(600, "Token invalido")]))
+
+
+def test_autorizar_rechazada_levanta_con_observaciones():
+    wsaa = Mock()
+    wsaa.get_ta.return_value = {"token": "t", "sign": "s"}
+    w = Wsfe(Mock(cuit=20299528015), wsaa)
+    w._client = Mock()
+    w._client.service.FECAESolicitar.return_value = _fecae_response(
+        resultado="R", cae=None, obs=[(10018, "CUIT receptor inválido")]
+    )
+    factura = _factura(concepto=CONCEPTO_PRODUCTOS)
+    with pytest.raises(WsfeError, match="10018"):
+        w.autorizar(factura)
