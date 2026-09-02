@@ -63,3 +63,31 @@ def test_ultimo_local_por_punto_de_venta(conn):
         )
     assert db.ultimo_local(conn, 3, 11) == 7
     assert db.ultimo_local(conn, 5, 11) == 0
+
+
+def test_list_facturas_mezcla_sync_y_emision_en_orden(conn):
+    # sync guarda fechas ISO (AAAA-MM-DD); insert_factura guarda datetime ISO.
+    db.upsert_factura(
+        conn,
+        punto_venta=3,
+        cbte_tipo=11,
+        cbte_nro=15,
+        cuit_receptor=1,
+        importe=1.0,
+        concepto=2,
+        cae="viejo",
+        cae_vto="20171008",
+        emitida_en="2017-09-28",
+    )
+    db.insert_factura(
+        conn,
+        punto_venta=3,
+        cbte_tipo=11,
+        cbte_nro=16,
+        cuit_receptor=1,
+        importe=2.0,
+        concepto=2,
+        cae="nuevo",
+        cae_vto="20260930",
+    )
+    assert [f["cae"] for f in db.list_facturas(conn)] == ["nuevo", "viejo"]
