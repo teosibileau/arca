@@ -31,6 +31,14 @@ repos:
       - id: check-added-large-files
       - id: check-case-conflict
 
+  # Conventional commits en el mensaje (hook de commit-msg: requiere
+  # `pre-commit install --hook-type commit-msg` además del install normal).
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v4.0.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+
   # Scan de seguridad del código de la app (tests excluidos via pyproject).
   - repo: https://github.com/PyCQA/bandit
     rev: 1.8.0
