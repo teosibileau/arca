@@ -3,7 +3,7 @@ from unittest.mock import Mock, patch
 from typer.testing import CliRunner
 
 from arca import db
-from arca.cli import app
+from arca.cli import _pick_cuit, app
 
 runner = CliRunner()
 
@@ -147,3 +147,24 @@ def test_padron_imprime_tabla_y_actualiza_cache(tmp_path):
     for esperado in ("ACME SA", "JURIDICA", "PUBLICIDAD", "IIBB", "ACTIVO"):
         assert esperado in result.output
     assert db.get_cliente(ctx[1], 30111222333)["denominacion"] == "ACME SA"
+
+
+def test_pick_cuit_con_cache_ofrece_clientes_y_otro(tmp_path):
+    _, conn, _, _ = _context(tmp_path)
+    db.upsert_cliente(conn, 30111222333, "ACME SA", 1, "IVA Responsable Inscripto")
+    select = Mock()
+    select.return_value.ask.return_value = "30111222333"
+    with patch("arca.cli.questionary.select", select):
+        assert _pick_cuit(conn) == 30111222333
+    choices = select.call_args.kwargs["choices"]
+    titles = [c.title for c in choices]
+    assert any("ACME SA" in t for t in titles)
+    assert titles[-1] == "Otro CUIT…"
+
+
+def test_pick_cuit_sin_cache_pide_texto(tmp_path):
+    _, conn, _, _ = _context(tmp_path)
+    text = Mock()
+    text.return_value.ask.return_value = "20111111112"
+    with patch("arca.cli.questionary.text", text):
+        assert _pick_cuit(conn) == 20111111112
