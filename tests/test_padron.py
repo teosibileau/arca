@@ -1,6 +1,12 @@
 from types import SimpleNamespace as NS
 
-from arca.padron import _actividades, _condicion_from_persona, _denominacion
+from arca.padron import (
+    _actividades,
+    _condicion_from_persona,
+    _denominacion,
+    _domicilio,
+    _impuestos,
+)
 
 
 def _persona(mono=None, impuestos=None):
@@ -62,3 +68,33 @@ def test_actividades_principal_primero_y_sin_duplicados():
 
 def test_actividades_sin_ramas_devuelve_vacio():
     assert _actividades(NS(datosMonotributo=None, datosRegimenGeneral=None)) == []
+
+
+def test_impuestos_prefiere_rama_monotributo():
+    mono = NS(impuesto=[NS(descripcionImpuesto="MONOTRIBUTO", estadoImpuesto="AC", periodo=202401)])
+    rg = NS(impuesto=[NS(descripcionImpuesto="IVA", estadoImpuesto="AC", periodo=201408)])
+    persona = NS(datosMonotributo=mono, datosRegimenGeneral=rg)
+    assert _impuestos(persona) == [
+        {"descripcion": "MONOTRIBUTO", "estado": "AC", "periodo": 202401}
+    ]
+
+
+def test_impuestos_sin_ramas_devuelve_vacio():
+    assert _impuestos(NS(datosMonotributo=None, datosRegimenGeneral=None)) == []
+
+
+def test_domicilio_arma_partes_y_decodifica_html():
+    datos = NS(
+        domicilioFiscal=NS(
+            direccion="CAMINO DE LOS PA&#209;ILES 0",
+            localidad=None,
+            datoAdicional="LAS GOLONDRINAS",
+            descripcionProvincia="CHUBUT",
+            codPostal="8431",
+        )
+    )
+    assert _domicilio(datos) == "CAMINO DE LOS PAÑILES 0, LAS GOLONDRINAS, CHUBUT, 8431"
+
+
+def test_domicilio_ausente_devuelve_none():
+    assert _domicilio(NS(domicilioFiscal=None)) is None
