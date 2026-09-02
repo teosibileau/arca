@@ -1,6 +1,6 @@
 from types import SimpleNamespace as NS
 
-from arca.padron import _condicion_from_persona
+from arca.padron import _condicion_from_persona, _denominacion
 
 
 def _persona(mono=None, impuestos=None):
@@ -29,3 +29,18 @@ def test_condicion_impuesto_32_es_exento():
 def test_condicion_default_es_consumidor_final():
     assert _condicion_from_persona(_persona(impuestos=[])) == (5, "Consumidor Final")
     assert _condicion_from_persona(_persona()) == (5, "Consumidor Final")
+
+
+def test_denominacion_prefiere_razon_social():
+    persona = NS(datosGenerales=NS(razonSocial="ACME SA", nombre="X", apellido="Y"))
+    assert _denominacion(persona) == "ACME SA"
+
+
+def test_denominacion_arma_nombre_y_apellido():
+    persona = NS(datosGenerales=NS(razonSocial=None, nombre="MARIA", apellido="DUFFY"))
+    assert _denominacion(persona) == "MARIA DUFFY"
+
+
+def test_denominacion_tolera_campos_nulos():
+    persona = NS(datosGenerales=NS(razonSocial=None, nombre=None, apellido="DUFFY"))
+    assert _denominacion(persona) == "DUFFY"
