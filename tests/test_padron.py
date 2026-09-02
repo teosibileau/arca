@@ -1,6 +1,8 @@
 from types import SimpleNamespace as NS
+from unittest.mock import Mock
 
 from arca.padron import (
+    Padron,
     _actividades,
     _condicion_from_persona,
     _denominacion,
@@ -98,3 +100,30 @@ def test_domicilio_arma_partes_y_decodifica_html():
 
 def test_domicilio_ausente_devuelve_none():
     assert _domicilio(NS(domicilioFiscal=None)) is None
+
+
+def _padron_con_respuesta(respuesta):
+    p = Padron(Mock(cuit=20299528015), Mock(**{"get_ta.return_value": {"token": "t", "sign": "s"}}))
+    p._client = Mock()
+    p._client.service.getPersona.return_value = respuesta
+    return p
+
+
+def _persona_mono():
+    return NS(
+        datosGenerales=NS(razonSocial="ACME SA", nombre=None, apellido=None),
+        datosMonotributo=NS(),
+        datosRegimenGeneral=None,
+    )
+
+
+def test_consultar_desenvuelve_persona_de_homologacion():
+    p = _padron_con_respuesta(NS(persona=_persona_mono()))
+    assert p.consultar(30111222333)["denominacion"] == "ACME SA"
+
+
+def test_consultar_acepta_respuesta_plana_de_produccion():
+    p = _padron_con_respuesta(_persona_mono())
+    d = p.consultar(30111222333)
+    assert d["denominacion"] == "ACME SA"
+    assert d["condicion_iva_id"] == 6
