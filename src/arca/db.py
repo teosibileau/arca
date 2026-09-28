@@ -1,10 +1,14 @@
-"""Estado local en SQLite via oxyde: clientes (situación tributaria cacheada) y facturas."""
+"""Estado local en SQLite via oxyde: clientes (situación tributaria cacheada), facturas
+emitidas y comprobantes recibidos (Mis Comprobantes)."""
 
 import asyncio
+import json
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 
-from oxyde import Field, Model, create_tables, db, execute_raw, get_connection
+from oxyde import Field, Model, db, execute_raw
+from oxyde.db.schema import extract_current_schema, migration_compute_diff, migration_to_sql
 
 
 class Cliente(Model):
@@ -36,6 +40,34 @@ class Factura(Model):
         table_name = "facturas"
 
 
+class Recibida(Model):
+    """Comprobante que otro contribuyente nos emitió, según Mis Comprobantes."""
+
+    id: int | None = Field(default=None, db_pk=True)
+    cuit_emisor: int
+    denominacion_emisor: str | None = None
+    cbte_tipo: int
+    punto_venta: int
+    cbte_nro: int
+    fecha: str  # ISO (YYYY-MM-DD)
+    cae: str | None = None
+    moneda: str = "PES"
+    cotizacion: float = 1.0
+    neto_gravado: float = 0.0
+    neto_no_gravado: float = 0.0
+    exento: float = 0.0
+    otros_tributos: float = 0.0
+    iva: float = 0.0
+    total: float = 0.0
+
+    class Meta:
+        is_table = True
+        table_name = "recibidas"
+
+
+TABLAS = (Cliente, Factura, Recibida)
+
+
 class Connection:
     """Puente sync sobre la API async de oxyde.
 
@@ -52,13 +84,22 @@ class Connection:
     async def _init(self, path: Path) -> None:
         await db.disconnect_all()
         await db.init(default=f"sqlite:///{path}")
-        # create_tables no es idempotente (sin IF NOT EXISTS): solo en DB nueva.
-        existentes = await execute_raw(
-            "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN (?, ?)",
-            [Cliente.Meta.table_name, Factura.Meta.table_name],
-        )
-        if len(existentes) < 2:
-            await create_tables(await get_connection("default"))
+        await self._crear_tablas_faltantes()
+
+    async def _crear_tablas_faltantes(self) -> None:
+        """oxyde.create_tables no es idempotente (sin IF NOT EXISTS), así que se
+        generan sus mismos CREATE TABLE y se ejecutan solo los de tablas ausentes."""
+        filas = await execute_raw("SELECT name FROM sqlite_master WHERE type = 'table'")
+        existentes = {list(f.values())[0] for f in filas}
+        faltantes = {m.Meta.table_name for m in TABLAS} - existentes
+        if not faltantes:
+            return
+        vacio = json.dumps({"version": 1, "tables": {}})
+        actual = json.dumps(extract_current_schema(dialect="sqlite"))
+        for sql in migration_to_sql(migration_compute_diff(vacio, actual), "sqlite"):
+            m = re.match(r'CREATE TABLE "(\w+)"', sql)
+            if m and m.group(1) in faltantes:
+                await execute_raw(sql)
 
     def run(self, coro):
         return self._loop.run_until_complete(coro)
@@ -176,3 +217,21 @@ def ultimo_local(conn: Connection, punto_venta: int, cbte_tipo: int) -> int:
 def list_facturas(conn: Connection) -> list[dict]:
     facturas = conn.run(Factura.objects.order_by("-emitida_en", "-cbte_nro").all())
     return [f.model_dump() for f in facturas]
+
+
+def upsert_recibida(conn: Connection, **campos) -> bool:
+    """Upsert por (cuit_emisor, cbte_tipo, punto_venta, cbte_nro). True si era nueva."""
+    clave = {k: campos.pop(k) for k in ("cuit_emisor", "cbte_tipo", "punto_venta", "cbte_nro")}
+    _, created = conn.run(Recibida.objects.update_or_create(**clave, defaults=campos))
+    return created
+
+
+def ultima_recibida_fecha(conn: Connection) -> str | None:
+    """Fecha ISO del comprobante recibido más reciente, o None si no hay ninguno."""
+    filas = conn.run(Recibida.objects.order_by("-fecha").all())
+    return filas[0].fecha if filas else None
+
+
+def list_recibidas(conn: Connection) -> list[dict]:
+    filas = conn.run(Recibida.objects.order_by("-fecha", "-cbte_nro").all())
+    return [r.model_dump() for r in filas]

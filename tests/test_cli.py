@@ -191,3 +191,88 @@ def test_historial_formatea_lineas(tmp_path):
         "2017-09-28  0003-00000015  CUIT 27045612916  $150000.00  CAE 67395569265454"
         in result.output
     )
+
+
+def _recibida(**extra):
+    base = dict(
+        cuit_emisor=30716581973,
+        denominacion_emisor="HOGAR STORE SAS",
+        cbte_tipo=6,
+        punto_venta=100,
+        cbte_nro=20912,
+        fecha="2026-09-25",
+        cae="86394766551705",
+        moneda="PES",
+        cotizacion=1.0,
+        neto_gravado=0.0,
+        neto_no_gravado=0.0,
+        exento=0.0,
+        otros_tributos=0.0,
+        iva=0.0,
+        total=114997.02,
+    )
+    return {**base, **extra}
+
+
+def test_recibidas_guarda_nuevas_y_reporta(tmp_path):
+    ctx = _context(tmp_path)
+    m = Mock()
+    m.recibidas.return_value = [_recibida()]
+    with (
+        patch("arca.cli._context", return_value=ctx),
+        patch("arca.cli.mcmp_mod.Mcmp", return_value=m),
+    ):
+        result = runner.invoke(app, ["recibidas", "--desde", "2026-09-01", "--hasta", "2026-09-27"])
+    assert result.exit_code == 0, result.output
+    assert "T06 00100-00020912  CUIT 30716581973  HOGAR STORE SAS  $114997.02" in result.output
+    assert "1 comprobantes recibidos (1 nuevos)" in result.output
+    d, h = m.recibidas.call_args.args
+    assert (d.isoformat(), h.isoformat()) == ("2026-09-01", "2026-09-27")
+
+    # Segunda corrida sin --desde: arranca 7 días antes de la última guardada y no repite.
+    with (
+        patch("arca.cli._context", return_value=ctx),
+        patch("arca.cli.mcmp_mod.Mcmp", return_value=m),
+    ):
+        result = runner.invoke(app, ["recibidas"])
+    assert "(0 nuevos)" in result.output
+    assert m.recibidas.call_args.args[0].isoformat() == "2026-09-18"
+
+
+def test_recibidas_primera_vez_pide_desde(tmp_path):
+    ctx = _context(tmp_path)
+    with patch("arca.cli._context", return_value=ctx):
+        result = runner.invoke(app, ["recibidas"])
+    assert result.exit_code == 1
+    assert "--desde" in result.output
+
+
+def test_recibidas_json_imprime_solo_nuevas(tmp_path):
+    import json
+
+    ctx = _context(tmp_path)
+    db.upsert_recibida(ctx[1], **_recibida())
+    m = Mock()
+    m.recibidas.return_value = [_recibida(), _recibida(cbte_nro=1)]
+    with (
+        patch("arca.cli._context", return_value=ctx),
+        patch("arca.cli.mcmp_mod.Mcmp", return_value=m),
+    ):
+        result = runner.invoke(app, ["recibidas", "--json"])
+    assert result.exit_code == 0, result.output
+    assert [r["cbte_nro"] for r in json.loads(result.output)] == [1]
+
+
+def test_historial_recibidas(tmp_path):
+    ctx = _context(tmp_path)
+    with patch("arca.cli._context", return_value=ctx):
+        result = runner.invoke(app, ["historial", "--recibidas"])
+    assert "Sin comprobantes recibidos" in result.output
+
+    db.upsert_recibida(ctx[1], **_recibida())
+    with patch("arca.cli._context", return_value=ctx):
+        result = runner.invoke(app, ["historial", "--recibidas"])
+    assert (
+        "2026-09-25  T06 00100-00020912  CUIT 30716581973  HOGAR STORE SAS  $114997.02"
+        in result.output
+    )

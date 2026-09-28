@@ -91,3 +91,51 @@ def test_list_facturas_mezcla_sync_y_emision_en_orden(conn):
         cae_vto="20260930",
     )
     assert [f["cae"] for f in db.list_facturas(conn)] == ["nuevo", "viejo"]
+
+
+def test_recibidas_upsert_y_ultima_fecha(conn):
+    from arca.db import list_recibidas, ultima_recibida_fecha, upsert_recibida
+
+    assert ultima_recibida_fecha(conn) is None
+    base = dict(
+        cuit_emisor=30716581973,
+        denominacion_emisor="HOGAR STORE SAS",
+        cbte_tipo=6,
+        punto_venta=100,
+        cbte_nro=20912,
+        fecha="2026-09-25",
+        cae="86394766551705",
+        total=114997.02,
+    )
+    assert upsert_recibida(conn, **base) is True
+    assert upsert_recibida(conn, **{**base, "total": 1.0}) is False
+    assert upsert_recibida(conn, **{**base, "cbte_nro": 1, "fecha": "2026-09-01"}) is True
+    filas = list_recibidas(conn)
+    assert [(r["cbte_nro"], r["total"]) for r in filas] == [(20912, 1.0), (1, 114997.02)]
+    assert ultima_recibida_fecha(conn) == "2026-09-25"
+
+
+def test_tabla_nueva_se_agrega_a_db_existente(tmp_path):
+    """Una DB creada antes de `recibidas` tiene que ganar la tabla sin perder datos."""
+    import sqlite3
+
+    from arca import db as db_mod
+
+    path = tmp_path / "vieja.sqlite3"
+    raw = sqlite3.connect(path)
+    raw.execute(
+        'CREATE TABLE "clientes" ("cuit" INTEGER PRIMARY KEY, "denominacion" VARCHAR(255), '
+        '"condicion_iva_id" INTEGER, "condicion_desc" VARCHAR(255), '
+        '"consultado_en" VARCHAR(255) NOT NULL)'
+    )
+    raw.execute("INSERT INTO clientes VALUES (1, 'x', 1, 'y', 'z')")
+    raw.commit()
+    raw.close()
+
+    conn = db_mod.connect(path)
+    try:
+        assert db_mod.get_cliente(conn, 1)["denominacion"] == "x"
+        assert db_mod.list_recibidas(conn) == []
+        assert db_mod.list_facturas(conn) == []
+    finally:
+        conn.close()

@@ -62,8 +62,14 @@ commands:
     cmd: uv run arca facturar "$@"
 
   historial:
-    usage: Lista las facturas emitidas localmente.
-    cmd: uv run arca historial
+    usage: Lista las facturas emitidas localmente (--recibidas para los comprobantes recibidos).
+    cmd: uv run arca historial "$@"
+
+  recibidas:
+    usage: Trae de Mis Comprobantes lo que nos emitieron (--desde AAAA-MM-DD la primera vez). Necesita Docker y ARCA_CLAVE_FISCAL en .env.
+    cmd: |
+      ahoy check-env || exit 1
+      uv run arca recibidas "$@"
 
   padron:
     usage: Consulta la situación tributaria de un CUIT en el padrón (tabla con detalle).
@@ -76,3 +82,11 @@ commands:
   test:
     usage: Corre la suite de tests (sin red).
     cmd: uv run pytest "$@"
+
+  test-live:
+    usage: Login y consulta reales contra Mis Comprobantes (carga ARCA_CLAVE_FISCAL de .env).
+    env:
+      - .env
+    cmd: |
+      ahoy check-env || exit 1
+      uv run pytest -m live "$@"

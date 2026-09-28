@@ -1,11 +1,13 @@
-"""CLI: facturar, historial, sync, padron y status."""
+"""CLI: facturar, historial, sync, recibidas, padron y status."""
 
+import json
 from datetime import date
 
 import questionary
 import typer
 
 from arca import db
+from arca import mcmp as mcmp_mod
 from arca import padron as padron_mod
 from arca.config import Settings
 from arca.wsaa import Wsaa
@@ -112,11 +114,38 @@ def facturar(
     )
 
 
+def _linea_recibida(r: dict) -> str:
+    return (
+        f"{r['fecha']}  T{r['cbte_tipo']:02d} {r['punto_venta']:05d}-{r['cbte_nro']:08d}  "
+        f"CUIT {r['cuit_emisor']}  {r['denominacion_emisor'] or '-'}  ${r['total']:.2f}"
+    )
+
+
 @app.command()
-def historial():
-    """Lista las facturas emitidas guardadas localmente."""
+def historial(
+    recibidas: bool = typer.Option(
+        False, "--recibidas", help="Lista los comprobantes recibidos en lugar de los emitidos."
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Salida en JSON."),
+):
+    """Lista las facturas emitidas (o recibidas) guardadas localmente."""
     _, conn, _, _ = _context()
+    if recibidas:
+        filas = db.list_recibidas(conn)
+        if as_json:
+            typer.echo(json.dumps(filas, ensure_ascii=False, indent=1))
+            return
+        if not filas:
+            typer.echo("Sin comprobantes recibidos todavía. Corré `arca recibidas --desde ...`.")
+            return
+        for r in filas:
+            typer.echo(_linea_recibida(r))
+        return
+
     facturas = db.list_facturas(conn)
+    if as_json:
+        typer.echo(json.dumps(facturas, ensure_ascii=False, indent=1))
+        return
     if not facturas:
         typer.echo("Sin facturas emitidas todavía.")
         return
@@ -125,6 +154,45 @@ def historial():
             f"{f['emitida_en'][:10]}  {f['punto_venta']:04d}-{f['cbte_nro']:08d}  "
             f"CUIT {f['cuit_receptor']}  ${f['importe']:.2f}  CAE {f['cae']}"
         )
+
+
+@app.command()
+def recibidas(
+    desde: str | None = typer.Option(None, help="Fecha de emisión desde (AAAA-MM-DD)."),
+    hasta: str | None = typer.Option(
+        None, help="Fecha de emisión hasta (AAAA-MM-DD, default hoy)."
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Imprime las nuevas en JSON."),
+):
+    """Trae de Mis Comprobantes los comprobantes que nos emitieron y guarda los nuevos."""
+    settings, conn, _, _ = _context()
+    if desde is None:
+        try:
+            d, h = mcmp_mod.rango_por_defecto(db.ultima_recibida_fecha(conn))
+        except ValueError as e:
+            typer.secho(str(e), fg=typer.colors.RED)
+            raise typer.Exit(1) from None
+    else:
+        d, h = date.fromisoformat(desde), date.today()
+    if hasta is not None:
+        h = date.fromisoformat(hasta)
+
+    try:
+        filas = mcmp_mod.Mcmp(settings).recibidas(d, h)
+    except mcmp_mod.LoginFallido as e:
+        typer.secho(str(e), fg=typer.colors.RED)
+        raise typer.Exit(1) from None
+
+    nuevas = [r for r in filas if db.upsert_recibida(conn, **r)]
+    if as_json:
+        typer.echo(json.dumps(nuevas, ensure_ascii=False, indent=1))
+        return
+    for r in nuevas:
+        typer.echo(_linea_recibida(r))
+    typer.secho(
+        f"{d} a {h}: {len(filas)} comprobantes recibidos ({len(nuevas)} nuevos).",
+        fg=typer.colors.GREEN,
+    )
 
 
 @app.command()
