@@ -204,6 +204,68 @@ def upsert_factura(
     return created
 
 
+def insert_factura_si_falta(
+    conn: Connection,
+    *,
+    punto_venta: int,
+    cbte_tipo: int,
+    cbte_nro: int,
+    cuit_receptor: int,
+    importe: float,
+    cae: str,
+    emitida_en: str,
+) -> bool:
+    """Guarda una factura vista en Mis Comprobantes solo si no estaba. True si se insertó.
+
+    No pisa las existentes: las que vienen de WSFE traen concepto y vencimiento de CAE,
+    que el portal no da (quedan en 0 y vacío)."""
+    existe = conn.run(
+        Factura.objects.get_or_none(punto_venta=punto_venta, cbte_tipo=cbte_tipo, cbte_nro=cbte_nro)
+    )
+    if existe:
+        return False
+    conn.run(
+        Factura.objects.create(
+            punto_venta=punto_venta,
+            cbte_tipo=cbte_tipo,
+            cbte_nro=cbte_nro,
+            cuit_receptor=cuit_receptor,
+            importe=importe,
+            concepto=0,
+            cae=cae,
+            cae_vto="",
+            emitida_en=emitida_en,
+        )
+    )
+    return True
+
+
+def ultima_factura_fecha(conn: Connection) -> str | None:
+    """Fecha ISO (YYYY-MM-DD) de la factura emitida más reciente, o None."""
+    facturas = conn.run(Factura.objects.order_by("-emitida_en").all())
+    return facturas[0].emitida_en[:10] if facturas else None
+
+
+def totales_por_mes(conn: Connection) -> list[dict]:
+    """Facturado y gastado por mes (YYYY-MM), con cantidad de comprobantes de cada lado."""
+    meses: dict[str, dict] = {}
+
+    def fila(mes):
+        return meses.setdefault(
+            mes, {"mes": mes, "facturado": 0.0, "emitidas": 0, "gastos": 0.0, "recibidas": 0}
+        )
+
+    for f in conn.run(Factura.objects.all()):
+        m = fila(f.emitida_en[:7])
+        m["facturado"] += f.importe
+        m["emitidas"] += 1
+    for r in conn.run(Recibida.objects.all()):
+        m = fila(r.fecha[:7])
+        m["gastos"] += r.total
+        m["recibidas"] += 1
+    return [meses[k] for k in sorted(meses)]
+
+
 def ultimo_local(conn: Connection, punto_venta: int, cbte_tipo: int) -> int:
     """Mayor número de comprobante guardado localmente (0 si no hay ninguno)."""
     facturas = conn.run(

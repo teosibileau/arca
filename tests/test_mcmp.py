@@ -9,6 +9,7 @@ from arca import mcmp
 from arca.config import Settings
 
 FIXTURE = Path(__file__).parent / "fixtures" / "mcmp_lista_resultados.json"
+FIXTURE_E = Path(__file__).parent / "fixtures" / "mcmp_lista_emitidas.json"
 
 
 def _settings(tmp_path, clave="secreta"):
@@ -31,9 +32,9 @@ def _resp(payload, ok=True):
     return r
 
 
-def test_parse_fila_mapea_columnas_posicionales():
+def test_parse_recibida_mapea_columnas_posicionales():
     fila = json.loads(FIXTURE.read_text())["datos"]["data"][0]
-    r = mcmp.parse_fila(fila)
+    r = mcmp.parse_recibida(fila)
     assert r == {
         "cuit_emisor": 30716581973,
         "denominacion_emisor": "HOGAR STORE SAS",
@@ -51,6 +52,32 @@ def test_parse_fila_mapea_columnas_posicionales():
         "iva": 0.0,
         "total": 114997.02,
     }
+
+
+def test_parse_emitida_corre_tres_columnas():
+    """La grilla de Emitidos no tiene las columnas del emisor."""
+    fila = json.loads(FIXTURE_E.read_text())["datos"]["data"][0]
+    r = mcmp.parse_emitida(fila)
+    assert r["cuit_receptor"] == 30111222333
+    assert r["denominacion_receptor"] == "MOVE S. A. S."
+    assert (r["cbte_tipo"], r["punto_venta"], r["cbte_nro"]) == (11, 2, 19)
+    assert r["fecha"] == "2026-05-12"
+    assert r["cae"] == "86195251584793"
+    assert (r["moneda"], r["cotizacion"], r["total"]) == ("PES", 1.0, 1260000.0)
+
+
+def test_emitidas_consulta_con_t_e(tmp_path):
+    settings = _settings(tmp_path)
+    settings.mcmp_cookies_path.write_text("[]")
+    session = Mock()
+    session.get.side_effect = [
+        _resp({"estado": "ok", "datos": {"idConsulta": "7", "estado": "PE"}}),
+        _resp({"estado": "ok", "datos": {"serverSide": False}}),
+        _resp(json.loads(FIXTURE_E.read_text())),
+    ]
+    filas = mcmp.Mcmp(settings, session=session).emitidas(date(2026, 1, 1), date(2026, 9, 28))
+    assert session.get.call_args_list[0].kwargs["params"]["t"] == "E"
+    assert [f["cbte_nro"] for f in filas] == [19]
 
 
 def test_rango_por_defecto_solapa_siete_dias():

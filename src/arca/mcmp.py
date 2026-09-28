@@ -12,7 +12,8 @@ usan las cookies que deja y se replica la consulta que hace la página:
 
 Las filas son posicionales; los índices salen de las constantes rowXxx del JS de
 comprobantesRecibidos.do. Los índices impares intermedios son versiones "styled"
-para pantalla y se ignoran.
+para pantalla y se ignoran. La grilla de Emitidos (t=E) no tiene las columnas del
+emisor, así que todo lo posterior al documento de la contraparte corre 3 lugares.
 """
 
 import json
@@ -41,14 +42,14 @@ HEADERS = {
 }
 
 # Posiciones en cada fila de listaResultados (ver docstring).
-COL = {
+COL_RECIBIDAS = {
     "fecha": 0,
     "cbte_tipo": 1,
     "punto_venta": 3,
     "cbte_nro": 4,
     "cae": 8,
-    "cuit_emisor": 11,  # rowNroDocEmisor; rowCUITEmisor (9) viene null
-    "denominacion_emisor": 12,
+    "cuit_contraparte": 11,  # rowNroDocEmisor; rowCUITEmisor (9) viene null
+    "denominacion_contraparte": 12,
     "cotizacion": 16,
     "moneda": 17,
     "neto_gravado": 40,
@@ -58,6 +59,11 @@ COL = {
     "iva": 48,
     "total": 50,
 }
+COL_EMITIDAS = {
+    k: (v if v <= 12 else v - 3)
+    for k, v in COL_RECIBIDAS.items()
+    if k not in ("cuit_contraparte", "denominacion_contraparte")
+} | {"cuit_contraparte": 11, "denominacion_contraparte": 12}
 
 
 class SesionVencida(Exception):
@@ -72,26 +78,40 @@ def _num(v) -> float:
     return float(v) if v not in (None, "") else 0.0
 
 
-def parse_fila(fila: list) -> dict:
-    """Convierte una fila posicional de listaResultados en un dict de Recibida."""
-    fecha = datetime.strptime(fila[COL["fecha"]], "%d/%m/%Y").date().isoformat()
+def parse_fila(fila: list, col: dict = COL_RECIBIDAS) -> dict:
+    """Convierte una fila posicional de listaResultados en un dict con nombres."""
+    fecha = datetime.strptime(fila[col["fecha"]], "%d/%m/%Y").date().isoformat()
     return {
-        "cuit_emisor": int(fila[COL["cuit_emisor"]]),
-        "denominacion_emisor": fila[COL["denominacion_emisor"]],
-        "cbte_tipo": int(fila[COL["cbte_tipo"]]),
-        "punto_venta": int(fila[COL["punto_venta"]]),
-        "cbte_nro": int(fila[COL["cbte_nro"]]),
+        "cuit_contraparte": int(fila[col["cuit_contraparte"]]),
+        "denominacion_contraparte": fila[col["denominacion_contraparte"]],
+        "cbte_tipo": int(fila[col["cbte_tipo"]]),
+        "punto_venta": int(fila[col["punto_venta"]]),
+        "cbte_nro": int(fila[col["cbte_nro"]]),
         "fecha": fecha,
-        "cae": fila[COL["cae"]],
-        "moneda": "PES" if fila[COL["moneda"]] in ("$", None) else fila[COL["moneda"]],
-        "cotizacion": _num(fila[COL["cotizacion"]]) or 1.0,
-        "neto_gravado": _num(fila[COL["neto_gravado"]]),
-        "neto_no_gravado": _num(fila[COL["neto_no_gravado"]]),
-        "exento": _num(fila[COL["exento"]]),
-        "otros_tributos": _num(fila[COL["otros_tributos"]]),
-        "iva": _num(fila[COL["iva"]]),
-        "total": _num(fila[COL["total"]]),
+        "cae": fila[col["cae"]],
+        "moneda": "PES" if fila[col["moneda"]] in ("$", None) else fila[col["moneda"]],
+        "cotizacion": _num(fila[col["cotizacion"]]) or 1.0,
+        "neto_gravado": _num(fila[col["neto_gravado"]]),
+        "neto_no_gravado": _num(fila[col["neto_no_gravado"]]),
+        "exento": _num(fila[col["exento"]]),
+        "otros_tributos": _num(fila[col["otros_tributos"]]),
+        "iva": _num(fila[col["iva"]]),
+        "total": _num(fila[col["total"]]),
     }
+
+
+def parse_recibida(fila: list) -> dict:
+    r = parse_fila(fila, COL_RECIBIDAS)
+    r["cuit_emisor"] = r.pop("cuit_contraparte")
+    r["denominacion_emisor"] = r.pop("denominacion_contraparte")
+    return r
+
+
+def parse_emitida(fila: list) -> dict:
+    r = parse_fila(fila, COL_EMITIDAS)
+    r["cuit_receptor"] = r.pop("cuit_contraparte")
+    r["denominacion_receptor"] = r.pop("denominacion_contraparte")
+    return r
 
 
 def rango_por_defecto(ultima_fecha: str | None, hoy: date | None = None) -> tuple[date, date]:
@@ -163,10 +183,12 @@ class Mcmp:
             raise RuntimeError(f"mcmp {params.get('f')}: {data}")
         return data
 
-    def _consultar(self, desde: date, hasta: date) -> list[dict]:
+    def _consultar(self, desde: date, hasta: date, tipo: str = "R") -> list[dict]:
+        """tipo: R recibidos, E emitidos (todos los puntos de venta y medios de emisión)."""
+        parse = parse_recibida if tipo == "R" else parse_emitida
         rango = f"{desde:%d/%m/%Y} - {hasta:%d/%m/%Y}"
         gen = self._ajax(
-            f="generarConsulta", t="R", fechaEmision=rango, cuitConsultada=self.settings.cuit
+            f="generarConsulta", t=tipo, fechaEmision=rango, cuitConsultada=self.settings.cuit
         )
         id_consulta = gen["datos"]["idConsulta"]
         # Sin esta llamada la consulta queda en PE indefinidamente, aunque ya tenga data.
@@ -181,7 +203,7 @@ class Mcmp:
                 raise RuntimeError(f"mcmp: {consulta['error']}")
             data = res["datos"]["data"]
             if consulta["estado"] != "PE" and len(data) == res.get("recordsTotal"):
-                return [parse_fila(f) for f in data]
+                return [parse(f) for f in data]
             if consulta["estado"] == "TE":
                 raise RuntimeError(
                     f"mcmp: la consulta terminó con {res.get('recordsTotal')} resultados "
@@ -190,12 +212,19 @@ class Mcmp:
             time.sleep(2)
         raise RuntimeError("mcmp: la consulta no terminó de procesarse en 3 minutos")
 
-    def recibidas(self, desde: date, hasta: date) -> list[dict]:
-        """Comprobantes recibidos en el rango. Renueva la sesión una vez si venció."""
+    def _con_sesion(self, desde: date, hasta: date, tipo: str) -> list[dict]:
         if not self.cargar_cookies():
             self.login()
         try:
-            return self._consultar(desde, hasta)
+            return self._consultar(desde, hasta, tipo)
         except SesionVencida:
             self.login()
-            return self._consultar(desde, hasta)
+            return self._consultar(desde, hasta, tipo)
+
+    def recibidas(self, desde: date, hasta: date) -> list[dict]:
+        """Comprobantes que nos emitieron en el rango. Renueva la sesión una vez si venció."""
+        return self._con_sesion(desde, hasta, "R")
+
+    def emitidas(self, desde: date, hasta: date) -> list[dict]:
+        """Comprobantes que emitimos en el rango, por cualquier punto de venta o medio."""
+        return self._con_sesion(desde, hasta, "E")

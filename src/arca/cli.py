@@ -1,4 +1,4 @@
-"""CLI: facturar, historial, sync, recibidas, padron y status."""
+"""CLI: facturar, historial, sync, recibidas, emitidas, balance, padron y status."""
 
 import json
 from datetime import date
@@ -156,6 +156,105 @@ def historial(
         )
 
 
+def _rango(conn, desde, hasta, ultima_fecha) -> tuple[date, date]:
+    if desde is None:
+        try:
+            d, h = mcmp_mod.rango_por_defecto(ultima_fecha)
+        except ValueError as e:
+            typer.secho(str(e), fg=typer.colors.RED)
+            raise typer.Exit(1) from None
+    else:
+        d, h = date.fromisoformat(desde), date.today()
+    if hasta is not None:
+        h = date.fromisoformat(hasta)
+    return d, h
+
+
+@app.command()
+def emitidas(
+    desde: str | None = typer.Option(None, help="Fecha de emisión desde (AAAA-MM-DD)."),
+    hasta: str | None = typer.Option(
+        None, help="Fecha de emisión hasta (AAAA-MM-DD, default hoy)."
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Imprime las nuevas en JSON."),
+):
+    """Trae de Mis Comprobantes lo emitido por cualquier punto de venta y guarda lo que falta.
+
+    Complementa a `sync`, que solo ve el punto de venta de web services."""
+    settings, conn, _, _ = _context()
+    d, h = _rango(conn, desde, hasta, db.ultima_factura_fecha(conn))
+    try:
+        filas = mcmp_mod.Mcmp(settings).emitidas(d, h)
+    except mcmp_mod.LoginFallido as e:
+        typer.secho(str(e), fg=typer.colors.RED)
+        raise typer.Exit(1) from None
+
+    nuevas = [
+        f
+        for f in filas
+        if db.insert_factura_si_falta(
+            conn,
+            punto_venta=f["punto_venta"],
+            cbte_tipo=f["cbte_tipo"],
+            cbte_nro=f["cbte_nro"],
+            cuit_receptor=f["cuit_receptor"],
+            importe=f["total"],
+            cae=f["cae"],
+            emitida_en=f["fecha"],
+        )
+    ]
+    if as_json:
+        typer.echo(json.dumps(nuevas, ensure_ascii=False, indent=1))
+        return
+    for f in nuevas:
+        typer.echo(
+            f"{f['fecha']}  T{f['cbte_tipo']:02d} {f['punto_venta']:05d}-{f['cbte_nro']:08d}  "
+            f"CUIT {f['cuit_receptor']}  {f['denominacion_receptor'] or '-'}  ${f['total']:.2f}"
+        )
+    typer.secho(
+        f"{d} a {h}: {len(filas)} comprobantes emitidos ({len(nuevas)} nuevos).",
+        fg=typer.colors.GREEN,
+    )
+
+
+@app.command()
+def balance(
+    desde: str | None = typer.Option(None, help="Primer mes a mostrar (AAAA-MM)."),
+    as_json: bool = typer.Option(False, "--json", help="Salida en JSON."),
+):
+    """Facturado vs gastos (recibidas) por mes, según el historial local."""
+    from rich import box
+    from rich.console import Console
+    from rich.table import Table
+
+    _, conn, _, _ = _context()
+    meses = [m for m in db.totales_por_mes(conn) if desde is None or m["mes"] >= desde]
+    if as_json:
+        typer.echo(json.dumps(meses, ensure_ascii=False, indent=1))
+        return
+    if not meses:
+        typer.echo("Sin comprobantes guardados. Corré `arca emitidas` y `arca recibidas`.")
+        return
+    tabla = Table(title="Facturado vs gastos", title_justify="left", box=box.SIMPLE_HEAD)
+    for col in ("Mes", "Facturado", "Gastos", "Diferencia", "Emit.", "Recib."):
+        tabla.add_column(col, justify="left" if col == "Mes" else "right", no_wrap=True)
+    tf = tg = 0.0
+    for m in meses:
+        tf += m["facturado"]
+        tg += m["gastos"]
+        tabla.add_row(
+            m["mes"],
+            f"{m['facturado']:,.2f}",
+            f"{m['gastos']:,.2f}",
+            f"{m['facturado'] - m['gastos']:,.2f}",
+            str(m["emitidas"]),
+            str(m["recibidas"]),
+        )
+    tabla.add_section()
+    tabla.add_row("Total", f"{tf:,.2f}", f"{tg:,.2f}", f"{tf - tg:,.2f}", "", "", style="bold")
+    Console().print(tabla)
+
+
 @app.command()
 def recibidas(
     desde: str | None = typer.Option(None, help="Fecha de emisión desde (AAAA-MM-DD)."),
@@ -166,17 +265,7 @@ def recibidas(
 ):
     """Trae de Mis Comprobantes los comprobantes que nos emitieron y guarda los nuevos."""
     settings, conn, _, _ = _context()
-    if desde is None:
-        try:
-            d, h = mcmp_mod.rango_por_defecto(db.ultima_recibida_fecha(conn))
-        except ValueError as e:
-            typer.secho(str(e), fg=typer.colors.RED)
-            raise typer.Exit(1) from None
-    else:
-        d, h = date.fromisoformat(desde), date.today()
-    if hasta is not None:
-        h = date.fromisoformat(hasta)
-
+    d, h = _rango(conn, desde, hasta, db.ultima_recibida_fecha(conn))
     try:
         filas = mcmp_mod.Mcmp(settings).recibidas(d, h)
     except mcmp_mod.LoginFallido as e:

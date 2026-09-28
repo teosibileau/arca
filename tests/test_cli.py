@@ -276,3 +276,95 @@ def test_historial_recibidas(tmp_path):
         "2026-09-25  T06 00100-00020912  CUIT 30716581973  HOGAR STORE SAS  $114997.02"
         in result.output
     )
+
+
+def _emitida(**extra):
+    base = dict(
+        cuit_receptor=30111222333,
+        denominacion_receptor="MOVE S. A. S.",
+        cbte_tipo=11,
+        punto_venta=2,
+        cbte_nro=19,
+        fecha="2026-05-12",
+        cae="86195251584793",
+        moneda="PES",
+        cotizacion=1.0,
+        neto_gravado=0.0,
+        neto_no_gravado=0.0,
+        exento=0.0,
+        otros_tributos=0.0,
+        iva=0.0,
+        total=1260000.0,
+    )
+    return {**base, **extra}
+
+
+def test_emitidas_guarda_solo_lo_que_falta_sin_pisar_wsfe(tmp_path):
+    ctx = _context(tmp_path)
+    # Ya existe por sync (WSFE), con concepto y vencimiento de CAE.
+    db.upsert_factura(
+        ctx[1],
+        punto_venta=3,
+        cbte_tipo=11,
+        cbte_nro=1,
+        cuit_receptor=1,
+        importe=999.0,
+        concepto=2,
+        cae="X",
+        cae_vto="20261231",
+        emitida_en="2026-09-01",
+    )
+    m = Mock()
+    m.emitidas.return_value = [
+        _emitida(),
+        _emitida(punto_venta=3, cbte_nro=1, cuit_receptor=1, total=1.0, fecha="2026-09-01"),
+    ]
+    with (
+        patch("arca.cli._context", return_value=ctx),
+        patch("arca.cli.mcmp_mod.Mcmp", return_value=m),
+    ):
+        result = runner.invoke(app, ["emitidas", "--desde", "2026-01-01"])
+    assert result.exit_code == 0, result.output
+    assert "T11 00002-00000019  CUIT 30111222333  MOVE S. A. S.  $1260000.00" in result.output
+    assert "2 comprobantes emitidos (1 nuevos)" in result.output
+    facturas = {(f["punto_venta"], f["cbte_nro"]): f for f in db.list_facturas(ctx[1])}
+    assert facturas[(3, 1)]["importe"] == 999.0 and facturas[(3, 1)]["concepto"] == 2
+    assert facturas[(2, 19)]["importe"] == 1260000.0 and facturas[(2, 19)]["concepto"] == 0
+
+    # Sin --desde arranca 7 días antes de la última emitida (2026-09-01).
+    with (
+        patch("arca.cli._context", return_value=ctx),
+        patch("arca.cli.mcmp_mod.Mcmp", return_value=m),
+    ):
+        runner.invoke(app, ["emitidas"])
+    assert m.emitidas.call_args.args[0].isoformat() == "2026-08-25"
+
+
+def test_balance_por_mes(tmp_path):
+    import json
+
+    ctx = _context(tmp_path)
+    db.upsert_factura(
+        ctx[1],
+        punto_venta=2,
+        cbte_tipo=11,
+        cbte_nro=19,
+        cuit_receptor=1,
+        importe=1260000.0,
+        concepto=0,
+        cae="X",
+        cae_vto="",
+        emitida_en="2026-05-12",
+    )
+    db.upsert_recibida(ctx[1], **_recibida(fecha="2026-05-03", total=100.5))
+    db.upsert_recibida(ctx[1], **_recibida(cbte_nro=2, fecha="2026-06-03", total=50.0))
+    with patch("arca.cli._context", return_value=ctx):
+        result = runner.invoke(app, ["balance", "--json"])
+    assert json.loads(result.output) == [
+        {"mes": "2026-05", "facturado": 1260000.0, "emitidas": 1, "gastos": 100.5, "recibidas": 1},
+        {"mes": "2026-06", "facturado": 0.0, "emitidas": 0, "gastos": 50.0, "recibidas": 1},
+    ]
+    with patch("arca.cli._context", return_value=ctx):
+        result = runner.invoke(app, ["balance", "--desde", "2026-06"])
+    assert "2026-05" not in result.output and "2026-06" in result.output
+    assert "50.00" in result.output
