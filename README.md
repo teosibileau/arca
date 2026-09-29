@@ -46,16 +46,32 @@ uv run arca facturar --cuit 30111222333 --importe 150000
 uv run arca historial   # facturas emitidas, guardadas localmente
 uv run arca sync        # trae de ARCA las facturas que faltan en el historial local
 uv run arca padron 30111222333   # tabla con la situación tributaria del CUIT (condición de IVA, domicilio, actividades, impuestos)
+uv run arca recibidas --desde 2026-01-01   # trae de Mis Comprobantes lo que nos emitieron y guarda lo nuevo
+uv run arca historial --recibidas          # comprobantes recibidos guardados localmente
+uv run arca emitidas --desde 2026-01-01    # lo emitido por cualquier punto de venta o medio, completa el historial
+uv run arca balance                        # facturado vs gastos por mes, según el historial local
 ```
 
 `sync` consulta comprobante por comprobante (`FECompConsultar`) desde el último guardado hasta el último autorizado en ARCA, así el historial incluye también lo emitido por otros medios (portal, Facturante, etc.). `--todo` reconsulta desde el 1 y actualiza los ya guardados.
 
 `facturar` muestra un resumen (número, receptor, concepto, importe, ambiente) y pide confirmación antes de emitir; `--si` la saltea para uso scripteado. Cachea la situación tributaria del receptor por 30 días en `data/arca.sqlite3` (gitignoreado); `--refresh` fuerza la reconsulta al padrón, y `padron` también actualiza ese cache.
 
+### Comprobantes recibidos (Mis Comprobantes)
+
+Las facturas que te emiten a vos no tienen web service: viven en "Mis Comprobantes", una app del portal con clave fiscal. `recibidas` replica lo que hace esa página (los endpoints `ajax.do` que llenan la grilla), pero el login necesita un browser, así que corre en un container con Playwright (`docker/mcmp-login`) que deja las cookies en `data/mcmp_cookies.json`. Hace falta Docker andando y `ARCA_CLAVE_FISCAL` en `.env`.
+
+- La primera vez pide `--desde`. Después arranca solo desde la última fecha guardada menos 7 días, para absorber comprobantes cargados con fecha anterior. `--hasta` es opcional (default hoy).
+- Si no hay cookies o el portal responde HTML en vez de JSON (sesión vencida), levanta el container y se loguea de nuevo, una vez.
+- Si el login falla (clave incorrecta, captcha, cambio del portal) queda `data/mcmp_login_error.png` y `.html` con la página en la que se trabó.
+- `--json` en `recibidas` imprime solo los comprobantes nuevos, y en `historial --recibidas` todos, para encadenar con otros scripts.
+- `emitidas` es el espejo (pestaña Emitidos): trae lo facturado por cualquier punto de venta o medio, que `sync` no ve porque solo consulta el punto de venta de web services. Guarda en `facturas` solo lo que falta, sin pisar lo que trajo WSFE (que tiene concepto y vencimiento de CAE; el portal no los da).
+- `balance` cruza ambas tablas por mes. Es tan completo como lo que hayas traído con `emitidas`, `sync` y `recibidas`.
+
 ## Tests
 
 ```sh
 uv run pytest
+ARCA_CLAVE_FISCAL=... uv run pytest -m live   # login y consulta reales contra el portal
 ```
 
 Los tests son unitarios y no tocan la red: la firma WSAA se prueba con un certificado self-signed generado en el momento.

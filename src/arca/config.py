@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     env: Literal["homo", "prod"] = "homo"
     punto_venta: int = 1
     data_dir: Path = Path("data")
+    # Clave fiscal del portal, solo para Mis Comprobantes (no hay web service).
+    clave_fiscal: str | None = None
 
     @property
     def urls(self) -> dict[str, str]:
@@ -34,3 +36,7 @@ class Settings(BaseSettings):
     @property
     def db_path(self) -> Path:
         return self.data_dir / "arca.sqlite3"
+
+    @property
+    def mcmp_cookies_path(self) -> Path:
+        return self.data_dir / "mcmp_cookies.json"

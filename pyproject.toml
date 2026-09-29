@@ -15,6 +15,7 @@ dependencies = [
     "pydantic-settings>=2.5",
     "defusedxml>=0.7",
     "oxyde>=0.7.1",
+    "requests>=2.32",
 ]
 
 [project.scripts]
@@ -24,6 +25,10 @@ arca = "arca.cli:app"
 dev = [
     "pytest>=8.0",
 ]
+
+[tool.pytest.ini_options]
+markers = ["live: pega al portal de ARCA con clave fiscal real (se saltea sin ARCA_CLAVE_FISCAL)"]
+addopts = "-m 'not live'"
 
 [tool.ruff]
 # Ruff es dueño del lint, orden de imports (regla `I`) y formato. Sin isort
@@ -37,6 +42,9 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 [tool.bandit]
 # Los tests usan secretos descartables y asserts a propósito; solo la app.
 exclude_dirs = ["tests", ".venv"]
+# mcmp.login invoca `docker` con lista de argumentos y sin shell; bandit igual marca
+# el import de subprocess (B404), la llamada (B603) y el binario sin path absoluto (B607).
+skips = ["B404", "B603", "B607"]
 
 [build-system]
 requires = ["uv_build>=0.9.21,<0.10.0"]
